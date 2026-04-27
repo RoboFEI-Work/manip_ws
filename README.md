@@ -1,2 +1,2 @@
 # manip_ws
-workspace do manipulador
+Workspace do manipulador da RoboFEI@Work.
