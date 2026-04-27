@@ -1,0 +1,11 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# ROS/colcon local artifacts
+build/
+install/
+log/
+
+# VS Code
+.vscode/

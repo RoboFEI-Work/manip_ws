@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="kevin_levin_fantasmatico">
+    <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
+
+    <!-- Import kevin_levin_fantasmatico urdf file from workspace source path -->
+    <xacro:include filename="/home/thomas-ay/ros2_ws/src/manip/manip.urdf" />
+
+    <!-- Import control_xacro -->
+    <xacro:include filename="kevin_levin_fantasmatico.ros2_control.xacro" />
+
+
+    <xacro:kevin_levin_fantasmatico_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)"/>
+
+</robot>

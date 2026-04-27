@@ -1,0 +1,25 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: manip
+    relative_path: manip.urdf
+  srdf:
+    relative_path: config/kevin_levin_fantasmatico.srdf
+  package_settings:
+    author_name: RoboFEI@AtWork
+    author_email: ""
+    generated_timestamp: 1773861642
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity
+  modified_urdf:
+    xacros:
+      - control_xacro
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity
