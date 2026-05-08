@@ -1,5 +1,7 @@
 <launch>
 
+      <set_env name="RMW_IMPLEMENTATION" value="rmw_cyclonedds_cpp"/>
+
     <let
         name="urdf_path"
         value="$(find-pkg-share manip_description)/urdf/manip.urdf.xacro"/>
@@ -33,7 +35,6 @@
           args="joint_state_broadcaster" /> 
 
         <include file="$(find-pkg-share manip_moveit_config)/launch/move_group.launch.py"/>
-
 
 
 
