@@ -83,7 +83,9 @@ ros2 launch manip_bringup manip_bringup.launch.xml use_mock_components:=false
 
 O executavel de comando se chama `commmander` (com tres letras `m`).
 
-### Sequencia recomendada (3 terminais)
+Atualmente, o `commmander` ja e iniciado dentro de `manip_bringup.launch.xml`.
+
+### Sequencia recomendada (2 terminais)
 
 Terminal 1 (bringup):
 
@@ -92,18 +94,13 @@ source install/setup.bash
 ros2 launch manip_bringup manip_bringup.launch.xml
 ```
 
-Terminal 2 (commander):
-
-```bash
-source install/setup.bash
-ros2 run manip_commander commmander
-```
-
-Terminal 3 (publicar comandos):
+Terminal 2 (publicar comandos):
 
 ```bash
 source install/setup.bash
 ```
+
+Se voce iniciar o `commmander` manualmente enquanto ele ja estiver no bringup, podera haver dois nos consumindo os mesmos topicos.
 
 ## Topicos de comando aceitos pelo `commmander`
 
@@ -181,6 +178,19 @@ Grupos MoveIt usados pelo commander:
 
 - `arm`
 - `gripper`
+
+## Cinematica inversa
+
+O grupo `arm` esta configurado para usar o plugin `pick_ik/PickIkPlugin` (arquivo `src/manip_moveit_config/config/kinematics.yaml`).
+
+Resumo da configuracao atual:
+
+- Solver: `PickIkPlugin`
+- Modo: `global`
+- Timeout: `0.5`
+- Tentativas: `15`
+
+Observacao: com essa configuracao, o comportamento de IK pode diferir do KDL padrao em convergencia e escolha de solucoes para `go_to_pose_target`.
 
 ## Hardware — Dynamixel XM540
 
