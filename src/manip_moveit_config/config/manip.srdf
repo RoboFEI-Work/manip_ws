@@ -44,13 +44,16 @@
         <joint name="joint5" value="-1.6481"/>
     </group_state>
     <group_state name="gripper_close" group="gripper">
-        <joint name="joint6" value="0.0608"/>
+        <joint name="joint6" value="0.208"/>
+        <joint name="joint7" value="0.208"/>
     </group_state>
     <group_state name="gripper_open" group="gripper">
         <joint name="joint6" value="-0.2265"/>
+        <joint name="joint7" value="-0.2265"/>
     </group_state>
     <group_state name="gripper_half_open" group="gripper">
         <joint name="joint6" value="0"/>
+        <joint name="joint7" value="0"/>
     </group_state>
     <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
     <end_effector name="gripper" parent_link="gripper_base_link" group="gripper"/>

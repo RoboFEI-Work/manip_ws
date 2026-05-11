@@ -1,8 +1,3 @@
-# Python cache
-__pycache__/
-*.pyc
-
-# ROS/colcon local artifacts
 /build/
 /install/
 /log/

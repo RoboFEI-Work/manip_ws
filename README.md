@@ -2,16 +2,17 @@
 
 Workspace ROS 2 do manipulador da RoboFEI@Work.
 
-Este repositorio contem a descricao do robo, configuracao do MoveIt 2, bringup e interfaces para comando de braco e garra.
+Este repositorio contem a descricao do robo, configuracao do MoveIt 2, bringup, interfaces para comando de braco e garra, e a interface de hardware para os motores Dynamixel XM540.
 
 ## Visao geral
 
-Este workspace possui 4 pacotes principais:
+Este workspace possui 5 pacotes principais:
 
 - `manip_description`: URDF/Xacro, RViz e launch para visualizacao do robo.
 - `manip_moveit_config`: configuracao MoveIt 2 (SRDF, kinematics, limites, controladores e launch files).
 - `manip_bringup`: bringup integrado com `robot_state_publisher`, `ros2_control`, RViz e `move_group`.
 - `manip_commander`: nos C++ para enviar comandos ao MoveIt (ex.: `commmander`, `test_moveit`).
+- `manip_hardware`: interface de hardware `ros2_control` para os 7 motores Dynamixel XM540 (joints 1-5 do braco, joints 6-7 da garra).
 
 ## Estrutura do repositorio
 
@@ -22,12 +23,15 @@ Este workspace possui 4 pacotes principais:
 - `src/manip_bringup/launch/manip_bringup.launch.xml`: bringup principal do sistema.
 - `src/manip_bringup/config/ros2_controllers.yaml`: controladores do `ros2_control`.
 - `src/manip_commander/src/`: implementacao dos nos de comando.
+- `src/manip_hardware/include/manip_hardware/`: headers do driver XM540 e da interface de hardware.
+- `src/manip_hardware/src/arm_hardware_interface.cpp`: implementacao da interface de hardware.
 
 ## Requisitos
 
 - Ubuntu Linux com ROS 2 instalado.
 - MoveIt 2 instalado no ambiente.
 - `rosdep` configurado.
+- `dynamixel_sdk` instalado.
 
 ## Setup e build
 
@@ -43,7 +47,7 @@ source install/setup.bash
 Build apenas dos pacotes do manip:
 
 ```bash
-colcon build --packages-select manip_description manip_moveit_config manip_bringup manip_commander
+colcon build --packages-select manip_description manip_moveit_config manip_bringup manip_commander manip_hardware
 source install/setup.bash
 ```
 
@@ -68,6 +72,12 @@ ros2 launch manip_bringup manip_bringup.launch.xml
 ```
 
 Esse launch sobe os componentes necessarios para comando do braco e garra via MoveIt.
+
+Para usar o hardware real (motores XM540), passe o argumento:
+
+```bash
+ros2 launch manip_bringup manip_bringup.launch.xml use_mock_components:=false
+```
 
 ## Comando via `commmander`
 
@@ -164,13 +174,29 @@ Para o grupo `gripper`:
 Controladores `ros2_control` configurados:
 
 - `arm_controller` (juntas `joint1` a `joint5`)
-- `gripper_controller` (junta `joint6`)
+- `gripper_controller` (juntas `joint6` e `joint7`)
 - `joint_state_broadcaster`
 
 Grupos MoveIt usados pelo commander:
 
 - `arm`
 - `gripper`
+
+## Hardware — Dynamixel XM540
+
+O pacote `manip_hardware` implementa a interface `ros2_control` para 7 motores Dynamixel XM540 via Protocol 2.0:
+
+| Joint   | Motor ID | Funcao         |
+|---------|----------|----------------|
+| joint1  | 1        | Braco          |
+| joint2  | 2        | Braco          |
+| joint3  | 3        | Braco          |
+| joint4  | 4        | Braco          |
+| joint5  | 5        | Braco          |
+| joint6  | 6        | Garra          |
+| joint7  | 7        | Garra          |
+
+Os IDs e a porta serial sao configurados no URDF/Xacro (`manip.ros2_control.xacro`).
 
 ## Comandos uteis de verificacao
 
@@ -230,6 +256,12 @@ Sem movimento da garra:
 - Teste `open_gripper` com `true` e `false`.
 - Confirme se os estados `gripper_open` e `gripper_close` existem no SRDF.
 
+Hardware real nao responde:
+
+- Verifique se a porta serial esta correta em `manip.ros2_control.xacro` (padrao `/dev/ttyUSB0`).
+- Verifique se os IDs dos motores batem com o configurado.
+- Confirme que o baudrate dos motores esta em 57600.
+
 ## Launch files disponiveis
 
 Em `manip_moveit_config/launch/`:
@@ -256,5 +288,3 @@ Em `manip_moveit_config/launch/`:
 
 - `manip_moveit_config`: BSD-3-Clause.
 - Demais pacotes: revisar campo de licenca em cada `package.xml`.
-
-

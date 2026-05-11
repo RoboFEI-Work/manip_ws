@@ -80,7 +80,6 @@
     <origin xyz="0.025325 0 0.006"/>
     <axis xyz="0 -1 0"/>
     <limit lower="-1.0" upper="1.0" effort="1" velocity="5"/>
-    <mimic joint="joint6" offset="0"/>
     </joint>
 
 </robot>
