@@ -1,0 +1,43 @@
+<launch>
+
+    <let
+        name="urdf_path"
+        value="$(find-pkg-share manip_description)/urdf/manip.urdf.xacro"/>
+
+    <let name="rviz_config_path"
+        value="$(find-pkg-share manip_bringup)/config/manip_moveit.rviz"/>
+
+      <arg name="use_mock_components" default="true"/>
+
+    <node pkg="robot_state_publisher" exec="robot_state_publisher" >
+        <param
+            name="robot_description"
+            value="$(command 'xacro $(var urdf_path) use_mock_components:=$(var use_mock_components)')"/>
+    </node>
+
+    <node pkg="rviz2" exec="rviz2" output="screen" 
+          args="-d $(var rviz_config_path)"/>
+
+    <node pkg="controller_manager" exec="ros2_control_node" output="screen" >
+          <param
+            name="robot_description"
+            value="$(command 'xacro $(var urdf_path)')"/>
+          <param from="$(find-pkg-share manip_bringup)/config/ros2_controllers.yaml"/>
+    </node>
+
+    <node pkg="controller_manager" exec="spawner" output="screen"
+          args="arm_controller"/>  
+
+    <node pkg="controller_manager" exec="spawner" output="screen"
+          args="gripper_controller" /> 
+
+    <node pkg="controller_manager" exec="spawner" output="screen"
+          args="joint_state_broadcaster" /> 
+
+                        <include file="$(find-pkg-share manip_moveit_config)/launch/move_group.launch.py">
+                              <arg name="capabilities" value="move_group/ExecuteTaskSolutionCapability"/>
+                        </include>
+
+    <node pkg="manip_commander" exec="commmander"/>
+
+</launch>

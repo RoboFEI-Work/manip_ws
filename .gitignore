@@ -1,0 +1,11 @@
+/build/
+/install/
+/log/
+
+# Editor metadata
+/.vscode/
+.vscode/
+.codex/
+
+# OS files
+.DS_Store
