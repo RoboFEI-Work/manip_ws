@@ -6,13 +6,15 @@ Este repositorio contem a descricao do robo, configuracao do MoveIt 2, bringup, 
 
 ## Visao geral
 
-Este workspace possui 5 pacotes principais:
+Este workspace possui 7 pacotes principais:
 
 - `manip_description`: URDF/Xacro, RViz e launch para visualizacao do robo.
 - `manip_moveit_config`: configuracao MoveIt 2 (SRDF, kinematics, limites, controladores e launch files).
 - `manip_bringup`: bringup integrado com `robot_state_publisher`, `ros2_control`, RViz e `move_group`.
 - `manip_commander`: nos C++ para enviar comandos ao MoveIt (ex.: `commmander`, `test_moveit`).
 - `manip_hardware`: interface de hardware `ros2_control` para os 7 motores Dynamixel XM540 (joints 1-5 do braco, joints 6-7 da garra).
+- `mtc_tutorial`: nos de manipulacao com MoveIt Task Constructor e action server de pick.
+- `my_robot_msgs`: interfaces ROS 2 customizadas (ex.: action `PickTag`).
 
 ## Estrutura do repositorio
 
@@ -25,6 +27,8 @@ Este workspace possui 5 pacotes principais:
 - `src/manip_commander/src/`: implementacao dos nos de comando.
 - `src/manip_hardware/include/manip_hardware/`: headers do driver XM540 e da interface de hardware.
 - `src/manip_hardware/src/arm_hardware_interface.cpp`: implementacao da interface de hardware.
+- `src/mtc_tutorial/src/mtc_pick_action_node.cpp`: action server `/pick_tag`.
+- `src/my_robot_msgs/action/PickTag.action`: definicao da action de pick por tag.
 
 ## Requisitos
 
@@ -47,7 +51,7 @@ source install/setup.bash
 Build apenas dos pacotes do manip:
 
 ```bash
-colcon build --packages-select manip_description manip_moveit_config manip_bringup manip_commander manip_hardware
+colcon build --packages-select manip_description manip_moveit_config manip_bringup manip_commander manip_hardware my_robot_msgs mtc_tutorial
 source install/setup.bash
 ```
 
@@ -73,10 +77,53 @@ ros2 launch manip_bringup manip_bringup.launch.xml
 
 Esse launch sobe os componentes necessarios para comando do braco e garra via MoveIt.
 
+Por padrao, esse bringup tambem sobe o action server de pick (`mtc_pick_action_node`).
+
+Argumentos disponiveis no bringup:
+
+- `use_mock_components` (default: `true`)
+- `launch_realsense` (default: `false`)
+- `launch_apriltag` (default: `false`)
+- `launch_pick_action` (default: `true`)
+- `apriltag_params_file` (default: `$(env HOME)/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml`)
+
 Para usar o hardware real (motores XM540), passe o argumento:
 
 ```bash
 ros2 launch manip_bringup manip_bringup.launch.xml use_mock_components:=false
+```
+
+Para subir camera + detector AprilTag no mesmo bringup:
+
+```bash
+ros2 launch manip_bringup manip_bringup.launch.xml \
+	launch_realsense:=true \
+	launch_apriltag:=true
+```
+
+Se o arquivo de parametros da tag estiver em outro caminho:
+
+```bash
+ros2 launch manip_bringup manip_bringup.launch.xml \
+	launch_realsense:=true \
+	launch_apriltag:=true \
+	apriltag_params_file:=/caminho/para/tags_36h11.yaml
+```
+
+Observacao: o repositorio local pode nao conter os fontes de `apriltag_ros` e `realsense2_camera`; nesse caso, use os pacotes instalados no ROS 2.
+
+## Action de pick por tag
+
+Action definida em `my_robot_msgs/action/PickTag.action`:
+
+- Goal: `tag_frame`, `container_pose`
+- Result: `success`, `message`
+- Feedback: `current_stage`
+
+Enviar goal manualmente:
+
+```bash
+ros2 action send_goal /pick_tag my_robot_msgs/action/PickTag "{tag_frame: tag_M30_nut, container_pose: container1}" --feedback
 ```
 
 ## Comando via `commmander`
@@ -376,9 +423,21 @@ Em `manip_moveit_config/launch/`:
 
 ## COMANDO APRILTAG
 
-             ros2 run apriltag_ros apriltag_node --ros-args -r image_rect:=/camera/camera/color/image_raw -r camera_info:=/camera/camera/color/camera_info --params-file ~/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml
-
+```bash
+ros2 run apriltag_ros apriltag_node --ros-args \
+	-r image_rect:=/camera/camera/color/image_raw \
+	-r camera_info:=/camera/camera/color/camera_info \
+	--params-file ~/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml
+```
 
 ## COMANDO CAMERA
-                  ros2 launch realsense2_camera rs_launch.py   camera_name:=camera   align_depth.enable:=true   pointcloud.enable:=true   enable_color:=true   enable_depth:=true
+
+```bash
+ros2 launch realsense2_camera rs_launch.py \
+	camera_name:=camera \
+	align_depth.enable:=true \
+	pointcloud.enable:=true \
+	enable_color:=true \
+	enable_depth:=true
+```
 

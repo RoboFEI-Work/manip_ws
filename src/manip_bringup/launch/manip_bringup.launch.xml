@@ -7,7 +7,11 @@
     <let name="rviz_config_path"
         value="$(find-pkg-share manip_bringup)/config/manip_moveit.rviz"/>
 
-      <arg name="use_mock_components" default="true"/>
+            <arg name="use_mock_components" default="true"/>
+            <arg name="launch_realsense" default="false"/>
+            <arg name="launch_apriltag" default="false"/>
+            <arg name="launch_pick_action" default="true"/>
+            <arg name="apriltag_params_file" default="$(env HOME)/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml"/>
 
     <node pkg="robot_state_publisher" exec="robot_state_publisher" >
         <param
@@ -21,7 +25,7 @@
     <node pkg="controller_manager" exec="ros2_control_node" output="screen" >
           <param
             name="robot_description"
-            value="$(command 'xacro $(var urdf_path)')"/>
+                                    value="$(command 'xacro $(var urdf_path) use_mock_components:=$(var use_mock_components)')"/>
           <param from="$(find-pkg-share manip_bringup)/config/ros2_controllers.yaml"/>
     </node>
 
@@ -34,10 +38,26 @@
     <node pkg="controller_manager" exec="spawner" output="screen"
           args="joint_state_broadcaster" /> 
 
-                        <include file="$(find-pkg-share manip_moveit_config)/launch/move_group.launch.py">
-                              <arg name="capabilities" value="move_group/ExecuteTaskSolutionCapability"/>
-                        </include>
+            <include file="$(find-pkg-share manip_moveit_config)/launch/move_group.launch.py">
+                  <arg name="capabilities" value="move_group/ExecuteTaskSolutionCapability"/>
+            </include>
+
+            <group if="$(var launch_realsense)">
+                  <include file="$(find-pkg-share realsense2_camera)/launch/rs_d455_pointcloud_launch.py"/>
+            </group>
+
+            <group if="$(var launch_apriltag)">
+                  <node pkg="apriltag_ros" exec="apriltag_node" output="screen">
+                        <remap from="image_rect" to="/camera/camera/color/image_raw"/>
+                        <remap from="camera_info" to="/camera/camera/color/camera_info"/>
+                        <param from="$(var apriltag_params_file)"/>
+                  </node>
+            </group>
 
     <node pkg="manip_commander" exec="commmander"/>
+
+            <group if="$(var launch_pick_action)">
+                  <node pkg="mtc_tutorial" exec="mtc_pick_action_node" output="screen"/>
+            </group>
 
 </launch>
