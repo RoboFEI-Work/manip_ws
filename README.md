@@ -6,15 +6,16 @@ Este repositorio contem a descricao do robo, configuracao do MoveIt 2, bringup, 
 
 ## Visao geral
 
-Este workspace possui 7 pacotes principais:
+Este workspace possui 8 pacotes principais:
 
 - `manip_description`: URDF/Xacro, RViz e launch para visualizacao do robo.
 - `manip_moveit_config`: configuracao MoveIt 2 (SRDF, kinematics, limites, controladores e launch files).
 - `manip_bringup`: bringup integrado com `robot_state_publisher`, `ros2_control`, RViz e `move_group`.
 - `manip_commander`: nos C++ para enviar comandos ao MoveIt (ex.: `commmander`, `test_moveit`).
+- `manip_bt`: executor de Behavior Tree e tradutor YAML para sequencia de acoes (`pick`/`place`).
 - `manip_hardware`: interface de hardware `ros2_control` para os 7 motores Dynamixel XM540 (joints 1-5 do braco, joints 6-7 da garra).
-- `mtc_tutorial`: nos de manipulacao com MoveIt Task Constructor e action server de pick.
-- `my_robot_msgs`: interfaces ROS 2 customizadas (ex.: action `PickTag`).
+- `mtc_tutorial`: nos de manipulacao com MoveIt Task Constructor e action servers de pick/place.
+- `my_robot_msgs`: interfaces ROS 2 customizadas (actions `PickTag` e `PlaceTag`).
 
 ## Estrutura do repositorio
 
@@ -24,11 +25,16 @@ Este workspace possui 7 pacotes principais:
 - `src/manip_moveit_config/launch/`: launch files do MoveIt.
 - `src/manip_bringup/launch/manip_bringup.launch.xml`: bringup principal do sistema.
 - `src/manip_bringup/config/ros2_controllers.yaml`: controladores do `ros2_control`.
+- `src/manip_bt/behavior_tree_manip/`: arvores XML e YAMLs de exemplo para BT.
+- `src/manip_bt/src/bt_executor.cpp`: executa a arvore BT registrada no pacote.
+- `src/manip_bt/src/competition_yaml_translator.cpp`: traduz YAML de tarefa para lista de acoes.
 - `src/manip_commander/src/`: implementacao dos nos de comando.
 - `src/manip_hardware/include/manip_hardware/`: headers do driver XM540 e da interface de hardware.
 - `src/manip_hardware/src/arm_hardware_interface.cpp`: implementacao da interface de hardware.
 - `src/mtc_tutorial/src/mtc_pick_action_node.cpp`: action server `/pick_tag`.
+- `src/mtc_tutorial/src/mtc_place_action_node.cpp`: action server `/place_tag`.
 - `src/my_robot_msgs/action/PickTag.action`: definicao da action de pick por tag.
+- `src/my_robot_msgs/action/PlaceTag.action`: definicao da action de place por tag.
 
 ## Requisitos
 
@@ -51,7 +57,7 @@ source install/setup.bash
 Build apenas dos pacotes do manip:
 
 ```bash
-colcon build --packages-select manip_description manip_moveit_config manip_bringup manip_commander manip_hardware my_robot_msgs mtc_tutorial
+colcon build --packages-select manip_description manip_moveit_config manip_bringup manip_commander manip_bt manip_hardware my_robot_msgs mtc_tutorial
 source install/setup.bash
 ```
 
@@ -77,7 +83,7 @@ ros2 launch manip_bringup manip_bringup.launch.xml
 
 Esse launch sobe os componentes necessarios para comando do braco e garra via MoveIt.
 
-Por padrao, esse bringup tambem sobe o action server de pick (`mtc_pick_action_node`).
+Por padrao, esse bringup tambem sobe os action servers de pick/place (`mtc_pick_action_node` e `mtc_place_action_node`).
 
 Argumentos disponiveis no bringup:
 
@@ -85,6 +91,7 @@ Argumentos disponiveis no bringup:
 - `launch_realsense` (default: `false`)
 - `launch_apriltag` (default: `false`)
 - `launch_pick_action` (default: `true`)
+- `launch_place_action` (default: `true`)
 - `apriltag_params_file` (default: `$(env HOME)/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml`)
 
 Para usar o hardware real (motores XM540), passe o argumento:
@@ -96,7 +103,7 @@ ros2 launch manip_bringup manip_bringup.launch.xml use_mock_components:=false
 Para subir camera + detector AprilTag no mesmo bringup:
 
 ```bash
-ros2 launch manip_bringup manip_bringup.launch.xml \
+ros2 launch manip_bringup manip_bringup.launch.xml use_mock_components:=false\
 	launch_realsense:=true \
 	launch_apriltag:=true
 ```
@@ -112,7 +119,7 @@ ros2 launch manip_bringup manip_bringup.launch.xml \
 
 Observacao: o repositorio local pode nao conter os fontes de `apriltag_ros` e `realsense2_camera`; nesse caso, use os pacotes instalados no ROS 2.
 
-## Action de pick por tag
+## Actions de pick/place por tag
 
 Action definida em `my_robot_msgs/action/PickTag.action`:
 
@@ -125,6 +132,79 @@ Enviar goal manualmente:
 ```bash
 ros2 action send_goal /pick_tag my_robot_msgs/action/PickTag "{tag_frame: tag_M30_nut, container_pose: container1}" --feedback
 ```
+
+Action definida em `my_robot_msgs/action/PlaceTag.action`:
+
+- Goal: `container_pose`, `table_pose`
+- Result: `success`, `message`
+- Feedback: `current_stage`
+
+Enviar goal manualmente:
+
+```bash
+ros2 action send_goal /place_tag my_robot_msgs/action/PlaceTag "{container_pose: container1, table_pose: Mesa15.2}" --feedback
+```
+
+## Behavior Tree (`manip_bt`)
+
+Executaveis disponiveis no pacote:
+
+- `ros2 run manip_bt manip_bt_executor`
+- `ros2 run manip_bt competition_yaml_translator`
+
+Nos BT customizados registrados no executor:
+
+- `GoToNamedPose` (porta: `pose_name`)
+- `PickTag` (portas: `tag_frame`, `container_pose`)
+- `PlaceTag` (portas: `container_pose`, `table_pose`)
+
+### Rodar o executor de BT
+
+1. Suba o bringup (com actions habilitadas):
+
+```bash
+source install/setup.bash
+ros2 launch manip_bringup manip_bringup.launch.xml launch_pick_action:=true launch_place_action:=true
+```
+
+2. Em outro terminal, rode o executor:
+
+```bash
+source install/setup.bash
+ros2 run manip_bt manip_bt_executor
+```
+
+Observacao: atualmente o executor usa caminho fixo para a arvore `behavior_tree_manip/test2.xml` dentro do share do pacote `manip_bt`.
+
+### Traduzir YAML de competicao para lista de acoes
+
+Uso:
+
+```bash
+ros2 run manip_bt competition_yaml_translator <competition_yaml> <output_yaml> [apriltag_yaml]
+```
+
+Exemplo com arquivo do pacote:
+
+```bash
+source install/setup.bash
+ros2 run manip_bt competition_yaml_translator competition_sample_btt1.yaml btt1_actions.yaml
+```
+
+Exemplo com caminho absoluto:
+
+```bash
+source install/setup.bash
+ros2 run manip_bt competition_yaml_translator \
+	src/manip_bt/behavior_tree_manip/ATT1.yaml \
+	att1_actions.yaml \
+	src/apriltag_ros/cfg/tags_36h11.yaml
+```
+
+Saida gerada (schema minimo):
+
+- `actions[].kind`: `pick` ou `place`
+- `actions[].tag_frame`: frame da tag resolvido via arquivo AprilTag
 
 ## Comando via `commmander`
 
@@ -204,8 +284,24 @@ ros2 topic pub --once /go_to_named_target example_interfaces/msg/String "{data: 
 Para o grupo `arm`:
 
 - `home`
+- `pirocao`
 - `pose_1`
 - `pose_2`
+- `pegar_obj`
+- `tag_direita`
+- `tag_esquerda`
+- `pre_container`
+- `container1`
+- `container2`
+- `container3`
+- `Mesa0`
+- `Mesa5`
+- `Mesa10`
+- `Mesa10.1`
+- `Mesa10.2`
+- `Mesa15`
+- `Mesa15.1`
+- `Mesa15.2`
 
 Para o grupo `gripper`:
 

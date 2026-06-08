@@ -1,0 +1,19 @@
+<root BTCPP_format="4">
+
+  <BehaviorTree ID="MainTree">
+
+    <Sequence>
+
+      <PickTag
+        tag_frame="tag_M30_nut"
+        container_pose="container1"/>
+
+      <PlaceTag
+        container_pose="container1"
+        table_pose="Mesa10"/>
+
+    </Sequence>
+
+  </BehaviorTree>
+
+</root>

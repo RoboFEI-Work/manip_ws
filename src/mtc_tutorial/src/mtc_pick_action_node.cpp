@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 #if __has_include(<tf2_geometry_msgs/tf2_geometry_msgs.hpp>)
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -39,8 +40,13 @@ public:
     PickActionServer()
     : Node("pick_action_server")
     {
-        // Ensure MTC PipelinePlanner can resolve OMPL params even if an
-        // external launch predeclares them empty.
+        // Ensure MTC PipelinePlanner can resolve OMPL params when this node is
+        // started outside the generated MoveIt launch.
+        if (!this->has_parameter("ompl.planning_plugins")) {
+            this->declare_parameter<std::vector<std::string>>(
+                "ompl.planning_plugins",
+                std::vector<std::string>{"ompl_interface/OMPLPlanner"});
+        }
         if (!this->has_parameter("ompl.planning_plugin")) {
             this->declare_parameter<std::string>(
                 "ompl.planning_plugin",
@@ -50,11 +56,18 @@ public:
             this->declare_parameter<std::vector<std::string>>(
                 "ompl.request_adapters",
                 std::vector<std::string>{
-                    "default_planner_request_adapters/AddTimeOptimalParameterization",
-                    "default_planner_request_adapters/FixWorkspaceBounds",
-                    "default_planner_request_adapters/FixStartStateBounds",
-                    "default_planner_request_adapters/FixStartStateCollision",
-                    "default_planner_request_adapters/FixStartStatePathConstraints"
+                    "default_planning_request_adapters/ResolveConstraintFrames",
+                    "default_planning_request_adapters/ValidateWorkspaceBounds",
+                    "default_planning_request_adapters/CheckStartStateBounds",
+                    "default_planning_request_adapters/CheckStartStateCollision"
+                });
+        }
+        if (!this->has_parameter("ompl.response_adapters")) {
+            this->declare_parameter<std::vector<std::string>>(
+                "ompl.response_adapters",
+                std::vector<std::string>{
+                    "default_planning_response_adapters/ValidateSolution",
+                    "default_planning_response_adapters/DisplayMotionPath"
                 });
         }
         if (!this->has_parameter("ompl.start_state_max_bounds_error")) {
@@ -63,12 +76,147 @@ public:
                 0.1);
         }
 
+        // Ensure MoveGroupInterface can instantiate IK for approximate targets
+        // when this node is started standalone (without MoveIt launch params).
+        if (!this->has_parameter("robot_description_kinematics.arm.kinematics_solver")) {
+            this->declare_parameter<std::string>(
+                "robot_description_kinematics.arm.kinematics_solver",
+                "pick_ik/PickIkPlugin");
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.kinematics_solver_timeout")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.kinematics_solver_timeout",
+                0.2);
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.mode")) {
+            this->declare_parameter<std::string>(
+                "robot_description_kinematics.arm.mode",
+                "global");
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.position_scale")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.position_scale",
+                1.0);
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.rotation_scale")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.rotation_scale",
+                0.03);
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.position_threshold")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.position_threshold",
+                0.002);
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.orientation_threshold")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.orientation_threshold",
+                0.30);
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.cost_threshold")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.cost_threshold",
+                0.001);
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.minimal_displacement_weight")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.minimal_displacement_weight",
+                0.02);
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.gd_step_size")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.gd_step_size",
+                0.0008);
+        }
+
+        // Keep the top-level form as a compatibility fallback for existing
+        // launch files that pass config/kinematics.yaml directly to this node.
+        if (!this->has_parameter("arm.kinematics_solver")) {
+            this->declare_parameter<std::string>(
+                "arm.kinematics_solver",
+                "pick_ik/PickIkPlugin");
+        }
+        if (!this->has_parameter("arm.kinematics_solver_timeout")) {
+            this->declare_parameter<double>(
+                "arm.kinematics_solver_timeout",
+                0.2);
+        }
+        if (!this->has_parameter("arm.mode")) {
+            this->declare_parameter<std::string>(
+                "arm.mode",
+                "global");
+        }
+        if (!this->has_parameter("arm.position_scale")) {
+            this->declare_parameter<double>(
+                "arm.position_scale",
+                1.0);
+        }
+        if (!this->has_parameter("arm.rotation_scale")) {
+            this->declare_parameter<double>(
+                "arm.rotation_scale",
+                0.03);
+        }
+        if (!this->has_parameter("arm.position_threshold")) {
+            this->declare_parameter<double>(
+                "arm.position_threshold",
+                0.002);
+        }
+        if (!this->has_parameter("arm.orientation_threshold")) {
+            this->declare_parameter<double>(
+                "arm.orientation_threshold",
+                0.30);
+        }
+        if (!this->has_parameter("arm.cost_threshold")) {
+            this->declare_parameter<double>(
+                "arm.cost_threshold",
+                0.001);
+        }
+        if (!this->has_parameter("arm.minimal_displacement_weight")) {
+            this->declare_parameter<double>(
+                "arm.minimal_displacement_weight",
+                0.02);
+        }
+        if (!this->has_parameter("arm.gd_step_size")) {
+            this->declare_parameter<double>(
+                "arm.gd_step_size",
+                0.0008);
+        }
+
+        std::vector<std::string> planning_plugins;
+        if (!this->get_parameter("ompl.planning_plugins", planning_plugins) ||
+            planning_plugins.empty() || planning_plugins.front().empty())
+        {
+            this->set_parameter(
+                rclcpp::Parameter(
+                    "ompl.planning_plugins",
+                    std::vector<std::string>{"ompl_interface/OMPLPlanner"}));
+        }
+
         std::string planning_plugin;
         if (!this->get_parameter("ompl.planning_plugin", planning_plugin) || planning_plugin.empty()) {
             this->set_parameter(
                 rclcpp::Parameter(
                     "ompl.planning_plugin",
                     "ompl_interface/OMPLPlanner"));
+        }
+
+        std::string kinematics_solver;
+        if (!this->get_parameter(
+                "robot_description_kinematics.arm.kinematics_solver",
+                kinematics_solver) ||
+            kinematics_solver.empty())
+        {
+            this->set_parameter(
+                rclcpp::Parameter(
+                    "robot_description_kinematics.arm.kinematics_solver",
+                    "pick_ik/PickIkPlugin"));
+        }
+
+        if (!this->get_parameter("arm.kinematics_solver", kinematics_solver) || kinematics_solver.empty()) {
+            this->set_parameter(
+                rclcpp::Parameter(
+                    "arm.kinematics_solver",
+                    "pick_ik/PickIkPlugin"));
         }
 
         tf_buffer_ =
@@ -151,6 +299,37 @@ private:
             tag_frame,
             tf2::TimePointZero,
             tf2::durationFromSec(0.5));
+    }
+
+    bool waitForTagTransform(
+        const std::string & reference_frame,
+        const std::string & tag_frame,
+        geometry_msgs::msg::TransformStamped & out_tf,
+        const std::chrono::milliseconds timeout,
+        const std::chrono::milliseconds retry_period,
+        const std::string & cycle_name) const
+    {
+        const auto start = std::chrono::steady_clock::now();
+        tf2::TransformException last_ex("unknown TF error");
+
+        while (std::chrono::steady_clock::now() - start < timeout) {
+            try {
+                out_tf = getTagTransform(reference_frame, tag_frame);
+                return true;
+            } catch (const tf2::TransformException & ex) {
+                last_ex = ex;
+            }
+
+            rclcpp::sleep_for(retry_period);
+        }
+
+        RCLCPP_ERROR_STREAM(
+            this->get_logger(),
+            "[" << cycle_name << "] Timed out waiting TF "
+                << reference_frame << " <- " << tag_frame
+                << " after " << timeout.count() << " ms. Last error: "
+                << last_ex.what());
+        return false;
     }
 
     bool planAndExecute(
@@ -309,22 +488,34 @@ private:
                 this->get_logger(),
                 "Task init failed [" << task_name << "]: " << e);
             return false;
-        }
-
-        if (!task.plan(20)) {
+        } catch (const std::exception & e) {
             RCLCPP_ERROR_STREAM(
                 this->get_logger(),
-                "Task planning failed [" << task_name << "]");
+                "Task init threw exception [" << task_name << "]: " << e.what());
             return false;
         }
 
-        task.introspection().publishSolution(*task.solutions().front());
+        try {
+            if (!task.plan(20)) {
+                RCLCPP_ERROR_STREAM(
+                    this->get_logger(),
+                    "Task planning failed [" << task_name << "]");
+                return false;
+            }
 
-        const auto result = task.execute(*task.solutions().front());
-        if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
+            task.introspection().publishSolution(*task.solutions().front());
+
+            const auto result = task.execute(*task.solutions().front());
+            if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
+                RCLCPP_ERROR_STREAM(
+                    this->get_logger(),
+                    "Task execution failed [" << task_name << "]");
+                return false;
+            }
+        } catch (const std::exception & e) {
             RCLCPP_ERROR_STREAM(
                 this->get_logger(),
-                "Task execution failed [" << task_name << "]");
+                "Task runtime exception [" << task_name << "]: " << e.what());
             return false;
         }
 
@@ -342,18 +533,19 @@ private:
         publish_stage(goal_handle, "detecting_tag");
 
         geometry_msgs::msg::TransformStamped tag_tf;
-        try {
-            tag_tf = getTagTransform("base_link", tag_frame);
-        } catch (const tf2::TransformException & ex) {
-            RCLCPP_ERROR_STREAM(
-                this->get_logger(),
-                "[" << cycle_name << "] " << ex.what());
+        if (!waitForTagTransform(
+                "base_link",
+                tag_frame,
+                tag_tf,
+                std::chrono::milliseconds(5000),
+                std::chrono::milliseconds(200),
+                cycle_name + " detect_tag")) {
             return false;
         }
 
         publish_stage(goal_handle, "pre_approach");
 
-        constexpr double kTagXNearZero = 0.01;
+        constexpr double kTagXNearZero = 0.1;
         const double tag_x = tag_tf.transform.translation.x;
 
         if (std::abs(tag_x) > kTagXNearZero) {
@@ -375,12 +567,13 @@ private:
 
         rclcpp::sleep_for(std::chrono::milliseconds(1000));
 
-        try {
-            tag_tf = getTagTransform("base_link", tag_frame);
-        } catch (const tf2::TransformException & ex) {
-            RCLCPP_ERROR_STREAM(
-                this->get_logger(),
-                "[" << cycle_name << "] " << ex.what());
+        if (!waitForTagTransform(
+                "base_link",
+                tag_frame,
+                tag_tf,
+                std::chrono::milliseconds(3000),
+                std::chrono::milliseconds(200),
+                cycle_name + " final_approach")) {
             return false;
         }
 
@@ -448,7 +641,7 @@ private:
         arm->setPlanningTime(15.0);
         arm->setNumPlanningAttempts(20);
         arm->setMaxVelocityScalingFactor(1.0);
-        arm->setMaxAccelerationScalingFactor(1.0);
+        arm->setMaxAccelerationScalingFactor(0.2);
         gripper->setMaxVelocityScalingFactor(1.0);
         gripper->setMaxAccelerationScalingFactor(1.0);
 
@@ -473,11 +666,27 @@ private:
             return;
         }
 
-        publish_stage(goal_handle, "approach_task_skipped");
+        publish_stage(goal_handle, "approach_task");
+        mtc::Task approach_task;
+        try {
+            approach_task = createApproachTask();
+        } catch (const std::exception & e) {
+            result->success = false;
+            result->message = std::string("Approach creation failed: ") + e.what();
+            goal_handle->abort(result);
+            return;
+        }
+
+        if (!executeTask(approach_task, "approach")) {
+            publish_stage(goal_handle, "approach_task_failed_fallback");
+            RCLCPP_WARN(
+                this->get_logger(),
+                "Approach task failed. Continuing pick cycle with fallback path.");
+        }
 
         rclcpp::sleep_for(std::chrono::milliseconds(2000));
 
-        const bool success = run_pick_cycle(
+        const bool cycle_success = run_pick_cycle(
             arm,
             gripper,
             goal->tag_frame,
@@ -485,8 +694,24 @@ private:
             "ACTION_CYCLE",
             goal_handle);
 
+        publish_stage(goal_handle, "returning_pegar_obj_final");
+        arm->setStartStateToCurrentState();
+        arm->setEndEffectorLink("tcp");
+        arm->setNamedTarget("pegar_obj");
+        const bool return_success = planAndExecute(arm, "final return pegar_obj");
+
+        const bool success = cycle_success && return_success;
+
         result->success = success;
-        result->message = success ? "Pick completed" : "Pick failed";
+        if (success) {
+            result->message = "Pick completed";
+        } else if (!cycle_success && !return_success) {
+            result->message = "Pick failed and failed returning to pegar_obj";
+        } else if (!cycle_success) {
+            result->message = "Pick failed";
+        } else {
+            result->message = "Pick completed but failed returning to pegar_obj";
+        }
 
         if (success) {
             publish_stage(goal_handle, "done");

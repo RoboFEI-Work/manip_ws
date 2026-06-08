@@ -11,6 +11,7 @@
             <arg name="launch_realsense" default="false"/>
             <arg name="launch_apriltag" default="false"/>
             <arg name="launch_pick_action" default="true"/>
+            <arg name="launch_place_action" default="true"/>
             <arg name="apriltag_params_file" default="$(env HOME)/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml"/>
 
     <node pkg="robot_state_publisher" exec="robot_state_publisher" >
@@ -43,7 +44,13 @@
             </include>
 
             <group if="$(var launch_realsense)">
-                  <include file="$(find-pkg-share realsense2_camera)/launch/rs_d455_pointcloud_launch.py"/>
+                  <include file="$(find-pkg-share realsense2_camera)/launch/rs_launch.py">
+                        <arg name="camera_name" value="camera"/>
+                        <arg name="align_depth.enable" value="true"/>
+                        <arg name="pointcloud.enable" value="true"/>
+                        <arg name="enable_color" value="true"/>
+                        <arg name="enable_depth" value="true"/>
+                  </include>
             </group>
 
             <group if="$(var launch_apriltag)">
@@ -58,6 +65,10 @@
 
             <group if="$(var launch_pick_action)">
                   <node pkg="mtc_tutorial" exec="mtc_pick_action_node" output="screen"/>
+            </group>
+
+            <group if="$(var launch_place_action)">
+                  <node pkg="mtc_tutorial" exec="mtc_place_action_node" output="screen"/>
             </group>
 
 </launch>

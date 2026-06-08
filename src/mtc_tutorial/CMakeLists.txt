@@ -48,8 +48,34 @@ ament_target_dependencies(
   "tf2_geometry_msgs"
 )
 
-install(TARGETS mtc_node mtc_pick_action_node
+add_executable(mtc_place_action_node src/mtc_place_action_node.cpp)
+target_include_directories(mtc_place_action_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+target_compile_features(mtc_place_action_node PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(
+  mtc_place_action_node
+  "moveit_ros_planning_interface"
+  "my_robot_msgs"
+  "rclcpp"
+  "rclcpp_action"
+)
+
+add_executable(analytical_ik_node src/analytical_ik_node.cpp)
+target_include_directories(analytical_ik_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+target_compile_features(analytical_ik_node PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(
+  analytical_ik_node
+  "rclcpp"
+)
+
+install(TARGETS mtc_node mtc_pick_action_node mtc_place_action_node analytical_ik_node
   DESTINATION lib/${PROJECT_NAME})
+
+install(DIRECTORY include/
+  DESTINATION include/${PROJECT_NAME})
 
 install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME})

@@ -395,10 +395,10 @@ void MTCTaskNode::doTask()
     arm->setNumPlanningAttempts(20);
 
   arm->setMaxVelocityScalingFactor(
-      0.3);
+      1.0);
 
   arm->setMaxAccelerationScalingFactor(
-      0.3);
+      0.2);
 
   gripper->setMaxVelocityScalingFactor(
       1.0);
@@ -525,7 +525,7 @@ void MTCTaskNode::doTask()
                 LOGGER,
                 "========== " << cycle_name << " PRE-APPROACH BY TAG X SIGN ==========");
 
-        constexpr double kTagXNearZero = 0.01;  // 1 cm deadband
+        constexpr double kTagXNearZero = 0.1;  // 1 cm deadband
         const double tag_x = tag_tf.transform.translation.x;
 
         RCLCPP_INFO_STREAM(
@@ -633,8 +633,93 @@ void MTCTaskNode::doTask()
         return;
     }
 
-    // Second cycle requested: tag_S40_40_B -> container2
-    if (!run_pick_cycle("tag_S40_40_B", "container2", "CYCLE2"))
+    // =====================================================
+    // USER REQUESTED POST-CYCLE SEQUENCE
+    // open gripper -> pre_container -> container1 -> close gripper
+    // -> pre_container -> pegar_obj -> Mesa0 -> open gripper -> pegar_obj
+    // =====================================================
+
+    gripper->setStartStateToCurrentState();
+    gripper->setNamedTarget("gripper_open");
+    if (!planAndExecute(gripper, "custom open gripper"))
+    {
+        return;
+    }
+
+    arm->setStartStateToCurrentState();
+    arm->setEndEffectorLink("tcp");
+    arm->setNamedTarget("pre_container");
+    if (!planAndExecute(arm, "custom pre_container 1"))
+    {
+        return;
+    }
+
+    arm->setStartStateToCurrentState();
+    arm->setEndEffectorLink("tcp");
+    arm->setNamedTarget("container1");
+    if (!planAndExecute(arm, "custom container1"))
+    {
+        return;
+    }
+
+    gripper->setStartStateToCurrentState();
+    gripper->setNamedTarget("gripper_close");
+    if (!planAndExecute(gripper, "custom close gripper"))
+    {
+        return;
+    }
+
+    arm->setStartStateToCurrentState();
+    arm->setEndEffectorLink("tcp");
+    arm->setNamedTarget("pre_container");
+    if (!planAndExecute(arm, "custom pre_container 2"))
+    {
+        return;
+    }
+
+    arm->setStartStateToCurrentState();
+    arm->setEndEffectorLink("tcp");
+    arm->setNamedTarget("pegar_obj");
+    if (!planAndExecute(arm, "custom pegar_obj 1"))
+    {
+        return;
+    }
+
+    arm->setStartStateToCurrentState();
+    arm->setEndEffectorLink("tcp");
+    arm->setNamedTarget("Mesa0");
+    if (!planAndExecute(arm, "custom Mesa0"))
+    {
+        return;
+    }
+
+    gripper->setStartStateToCurrentState();
+    gripper->setNamedTarget("gripper_open");
+    if (!planAndExecute(gripper, "custom open gripper final"))
+    {
+        return;
+    }
+
+    arm->setStartStateToCurrentState();
+    arm->setEndEffectorLink("tcp");
+    arm->setNamedTarget("pegar_obj");
+    if (!planAndExecute(arm, "custom pegar_obj final"))
+    {
+        return;
+    }
+
+    // FINALIZATION AFTER CYCLE 2: CLOSE GRIPPER AND GO HOME
+    gripper->setStartStateToCurrentState();
+    gripper->setNamedTarget("gripper_close");
+    if (!planAndExecute(gripper, "cycle2 final close gripper"))
+    {
+        return;
+    }
+
+    arm->setStartStateToCurrentState();
+    arm->setEndEffectorLink("tcp");
+    arm->setNamedTarget("home");
+    if (!planAndExecute(arm, "cycle2 final home"))
     {
         return;
     }

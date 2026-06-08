@@ -1,0 +1,25 @@
+actions:
+  - kind: pick
+    tag_frame: tag_Axis2
+  - kind: place
+    tag_frame: tag_Axis2
+  - kind: pick
+    tag_frame: tag_Bearing2
+  - kind: place
+    tag_frame: tag_Bearing2
+  - kind: pick
+    tag_frame: tag_Housing
+  - kind: place
+    tag_frame: tag_Housing
+  - kind: pick
+    tag_frame: tag_Motor2
+  - kind: place
+    tag_frame: tag_Motor2
+  - kind: pick
+    tag_frame: tag_Spacer
+  - kind: place
+    tag_frame: tag_Spacer
+  - kind: pick
+    tag_frame: tag_Screwdriver
+  - kind: place
+    tag_frame: tag_Screwdriver
