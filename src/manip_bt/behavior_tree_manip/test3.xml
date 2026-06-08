@@ -12,11 +12,18 @@
 
       <PlaceTag
         tag_frame="tag_S40_40_B"
-        table_pose="Mesa15.1"/>
+        table_pose="Mesa10.1"/>
 
-        <PlaceTag
+      <PickTag
+        tag_frame="tag_F20_20_B"/>
+
+      <PlaceTag
         tag_frame="tag_M30_nut"
-        table_pose="Mesa15.2"/>
+        table_pose="Mesa10.2"/>
+
+      <PlaceTag
+        tag_frame="tag_F20_20_B"
+        table_pose="Mesa10"/>
 
       <GoToNamedPose
         pose_name="home"/>

@@ -21,7 +21,7 @@ int main(int argc, char ** argv)
 
     const std::string tree_path =
         ament_index_cpp::get_package_share_directory("manip_bt") +
-        "/behavior_tree_manip/test2.xml";
+        "/behavior_tree_manip/test3.xml";
 
     auto tree = factory.createTreeFromFile(tree_path);
 

@@ -28,31 +28,23 @@ PickTagBT::PickTagBT(
 BT::PortsList PickTagBT::providedPorts()
 {
 	return {
-		BT::InputPort<std::string>("tag_frame"),
-		BT::InputPort<std::string>("container_pose")
+		BT::InputPort<std::string>("tag_frame")
 	};
 }
 
 BT::NodeStatus PickTagBT::onStart()
 {
 	std::string tag_frame;
-	std::string container_pose;
 
 	if (!getInput("tag_frame", tag_frame)) {
 		RCLCPP_ERROR(rclcpp::get_logger("PickTagBT"), "Missing input port: tag_frame");
 		return BT::NodeStatus::FAILURE;
 	}
 
-	if (!getInput("container_pose", container_pose)) {
-		RCLCPP_ERROR(rclcpp::get_logger("PickTagBT"), "Missing input port: container_pose");
-		return BT::NodeStatus::FAILURE;
-	}
-
 	RCLCPP_INFO(
 		rclcpp::get_logger("PickTagBT"),
-		"Sending PICK goal: tag_frame=%s container_pose=%s",
-		tag_frame.c_str(),
-		container_pose.c_str());
+		"Sending PICK goal: tag_frame=%s",
+		tag_frame.c_str());
 
 	if (!action_client_->wait_for_action_server(10s)) {
 		RCLCPP_ERROR(rclcpp::get_logger("PickTagBT"), "Action server /pick_tag not available");
@@ -61,7 +53,6 @@ BT::NodeStatus PickTagBT::onStart()
 
 	PickTag::Goal goal_msg;
 	goal_msg.tag_frame = tag_frame;
-	goal_msg.container_pose = container_pose;
 
 	goal_future_ = action_client_->async_send_goal(goal_msg);
 	goal_sent_ = true;

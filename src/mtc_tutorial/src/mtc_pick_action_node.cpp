@@ -15,6 +15,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <thread>
@@ -26,6 +27,7 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #endif
 
+#include "mtc_tutorial/container_state_store.hpp"
 #include "my_robot_msgs/action/pick_tag.hpp"
 
 namespace mtc = moveit::task_constructor;
@@ -40,6 +42,32 @@ public:
     PickActionServer()
     : Node("pick_action_server")
     {
+        const auto default_container_state_file = getDefaultContainerStatePath();
+        container_state_file_ = this->declare_parameter<std::string>(
+            "container_state_file",
+            default_container_state_file);
+        const bool reset_container_states_on_start =
+            this->declare_parameter<bool>("reset_container_states_on_start", false);
+        container_state_store_ =
+            std::make_unique<mtc_tutorial::ContainerStateStore>(container_state_file_);
+        if (reset_container_states_on_start) {
+            std::string reset_error;
+            if (!container_state_store_->resetAllEmpty(
+                    {"container1", "container2", "container3"},
+                    &reset_error)) {
+                RCLCPP_ERROR(
+                    this->get_logger(),
+                    "Failed to reset container state file %s: %s",
+                    container_state_file_.c_str(),
+                    reset_error.c_str());
+            } else {
+                RCLCPP_INFO(
+                    this->get_logger(),
+                    "Reset container state file to empty: %s",
+                    container_state_file_.c_str());
+            }
+        }
+
         // Ensure MTC PipelinePlanner can resolve OMPL params when this node is
         // started outside the generated MoveIt launch.
         if (!this->has_parameter("ompl.planning_plugins")) {
@@ -247,9 +275,20 @@ public:
     }
 
 private:
+    static std::string getDefaultContainerStatePath()
+    {
+        const char * home = std::getenv("HOME");
+        if (home != nullptr && home[0] != '\0') {
+            return std::string(home) + "/manip_ws/container_states.yaml";
+        }
+        return "container_states.yaml";
+    }
+
     rclcpp_action::Server<PickTag>::SharedPtr action_server_;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    std::string container_state_file_;
+    std::unique_ptr<mtc_tutorial::ContainerStateStore> container_state_store_;
 
     void publish_stage(
         const std::shared_ptr<GoalHandlePickTag> & goal_handle,
@@ -267,9 +306,8 @@ private:
     {
         RCLCPP_INFO(
             this->get_logger(),
-            "Received goal tag=%s container=%s",
-            goal->tag_frame.c_str(),
-            goal->container_pose.c_str());
+            "Received goal tag=%s",
+            goal->tag_frame.c_str());
         return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
     }
 
@@ -634,6 +672,16 @@ private:
         const auto goal = goal_handle->get_goal();
         auto result = std::make_shared<PickTag::Result>();
 
+        std::string container_pose;
+        std::string lookup_error;
+        if (!container_state_store_->findFirstEmptyContainer(&container_pose, &lookup_error)) {
+            result->success = false;
+            result->message =
+                "Pick failed: could not resolve an empty container from yaml: " + lookup_error;
+            goal_handle->abort(result);
+            return;
+        }
+
         auto arm = std::make_shared<MoveGroupInterface>(shared_from_this(), "arm");
         auto gripper = std::make_shared<MoveGroupInterface>(shared_from_this(), "gripper");
 
@@ -690,7 +738,7 @@ private:
             arm,
             gripper,
             goal->tag_frame,
-            goal->container_pose,
+            container_pose,
             "ACTION_CYCLE",
             goal_handle);
 
@@ -702,18 +750,37 @@ private:
 
         const bool success = cycle_success && return_success;
 
-        result->success = success;
+        bool state_write_success = true;
+        std::string state_write_error;
         if (success) {
+            state_write_success = container_state_store_->setOccupied(
+                container_pose,
+                goal->tag_frame,
+                &state_write_error);
+            if (!state_write_success) {
+                RCLCPP_ERROR(
+                    this->get_logger(),
+                    "Failed to update container state file %s: %s",
+                    container_state_file_.c_str(),
+                    state_write_error.c_str());
+            }
+        }
+
+        result->success = success && state_write_success;
+        if (result->success) {
             result->message = "Pick completed";
         } else if (!cycle_success && !return_success) {
             result->message = "Pick failed and failed returning to pegar_obj";
         } else if (!cycle_success) {
             result->message = "Pick failed";
+        } else if (!state_write_success) {
+            result->message =
+                "Pick completed but failed to update container state yaml: " + state_write_error;
         } else {
             result->message = "Pick completed but failed returning to pegar_obj";
         }
 
-        if (success) {
+        if (result->success) {
             publish_stage(goal_handle, "done");
             goal_handle->succeed(result);
         } else {

@@ -263,7 +263,8 @@ std::vector<TransferItem> buildTransfers(
 YAML::Node buildOutput(
   const YAML::Node & competition_root,
   const std::vector<TransferItem> & transfers,
-  const std::string & apriltag_yaml_path)
+  const std::string & apriltag_yaml_path,
+  const std::map<std::string, std::string> & ws_to_table_pose)
 {
   (void)competition_root;
   (void)apriltag_yaml_path;
@@ -283,6 +284,22 @@ YAML::Node buildOutput(
       YAML::Node place;
       place["kind"] = "place";
       place["tag_frame"] = t.tag_frame;
+
+      if (t.to_ws.empty()) {
+        throw std::runtime_error(
+                "Cannot emit place action without destination WS for object id " +
+                std::to_string(t.obj_id));
+      }
+
+      place["ws"] = t.to_ws;
+
+      const auto ws_it = ws_to_table_pose.find(t.to_ws);
+      if (ws_it == ws_to_table_pose.end()) {
+        throw std::runtime_error(
+                "Missing WS->Mesa mapping for destination workspace: " + t.to_ws);
+      }
+      place["table_pose"] = ws_it->second;
+
       action_seq.push_back(place);
     }
   }
@@ -303,6 +320,46 @@ std::string resolveApriltagPath(int argc, char ** argv)
     throw std::runtime_error(
             "Could not resolve default apriltag config. Provide third argument: <apriltag_yaml>");
   }
+}
+
+std::string resolveWsTableMapPath(int argc, char ** argv)
+{
+  if (argc >= 5) {
+    return argv[4];
+  }
+
+  try {
+    return ament_index_cpp::get_package_share_directory("manip_bt") +
+           "/behavior_tree_manip/ws_table_mapping.yaml";
+  } catch (const std::exception &) {
+    throw std::runtime_error(
+            "Could not resolve default WS map config. Provide fourth argument: <ws_table_map_yaml>");
+  }
+}
+
+std::map<std::string, std::string> parseWsToTablePose(const std::string & ws_map_yaml_path)
+{
+  const YAML::Node root = YAML::LoadFile(ws_map_yaml_path);
+  const YAML::Node ws_map = root["ws_to_table_pose"];
+  if (!ws_map || !ws_map.IsMap()) {
+    throw std::runtime_error("Invalid WS map file: expected ws_to_table_pose map");
+  }
+
+  std::map<std::string, std::string> result;
+  for (const auto & it : ws_map) {
+    const std::string ws = trim(it.first.as<std::string>());
+    const std::string table_pose = trim(it.second.as<std::string>());
+    if (ws.empty() || table_pose.empty()) {
+      continue;
+    }
+    result[ws] = table_pose;
+  }
+
+  if (result.empty()) {
+    throw std::runtime_error("WS map file does not contain any valid ws_to_table_pose entries");
+  }
+
+  return result;
 }
 
 std::string resolvePathWithFallbacks(
@@ -333,7 +390,7 @@ int main(int argc, char ** argv)
 {
   if (argc < 3) {
     std::cerr
-      << "Usage: competition_yaml_translator <competition_yaml> <output_yaml> [apriltag_yaml]"
+      << "Usage: competition_yaml_translator <competition_yaml> <output_yaml> [apriltag_yaml] [ws_table_map_yaml]"
       << std::endl;
     return 2;
   }
@@ -344,6 +401,7 @@ int main(int argc, char ** argv)
   try {
     std::vector<std::string> competition_fallback_dirs;
     std::vector<std::string> apriltag_fallback_dirs;
+    std::vector<std::string> ws_map_fallback_dirs;
 
     try {
       competition_fallback_dirs.push_back(
@@ -352,6 +410,7 @@ int main(int argc, char ** argv)
       // Optional fallback only.
     }
     competition_fallback_dirs.push_back("src/manip_bt/behavior_tree_manip");
+    ws_map_fallback_dirs = competition_fallback_dirs;
 
     try {
       apriltag_fallback_dirs.push_back(
@@ -368,6 +427,11 @@ int main(int argc, char ** argv)
     const std::string apriltag_yaml_path =
       resolvePathWithFallbacks(apriltag_yaml_arg, apriltag_fallback_dirs);
 
+    const std::string ws_map_yaml_arg = resolveWsTableMapPath(argc, argv);
+    const std::string ws_map_yaml_path =
+      resolvePathWithFallbacks(ws_map_yaml_arg, ws_map_fallback_dirs);
+    const auto ws_to_table_pose = parseWsToTablePose(ws_map_yaml_path);
+
     const YAML::Node competition_root = YAML::LoadFile(competition_yaml_path);
     const auto active_areas = parseActiveAreas(competition_root);
     std::set<int> ignored_object_ids;
@@ -376,7 +440,7 @@ int main(int argc, char ** argv)
     const auto finish_index = buildStateIndex(competition_root["finish_state"], active_areas, "finish_state");
     const auto id_to_frame = parseApriltagIdToFrame(apriltag_yaml_path);
     const auto transfers = buildTransfers(objects, start_index, finish_index, id_to_frame, ignored_object_ids);
-    const auto output = buildOutput(competition_root, transfers, apriltag_yaml_path);
+    const auto output = buildOutput(competition_root, transfers, apriltag_yaml_path, ws_to_table_pose);
 
     YAML::Emitter out;
     out << output;

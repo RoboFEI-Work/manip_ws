@@ -1,5 +1,4 @@
 string tag_frame
-string container_pose
 
 ---
 bool success

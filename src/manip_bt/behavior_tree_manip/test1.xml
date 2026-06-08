@@ -5,11 +5,10 @@
     <Sequence>
 
       <PickTag
-        tag_frame="tag_M30_nut"
-        container_pose="container1"/>
+        tag_frame="tag_M30_nut"/>
 
       <PlaceTag
-        container_pose="container1"
+        tag_frame="tag_M30_nut"
         table_pose="Mesa10"/>
 
     </Sequence>

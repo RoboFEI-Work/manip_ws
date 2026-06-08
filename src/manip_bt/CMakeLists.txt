@@ -22,6 +22,13 @@ add_executable(manip_bt_executor
   src/place_tag_bt.cpp
 )
 
+add_executable(bt_yaml_executor
+  src/bt_yaml_executor.cpp
+  src/go_to_named_pose_bt.cpp
+  src/pick_tag_bt.cpp
+  src/place_tag_bt.cpp
+)
+
 add_executable(competition_yaml_translator
   src/competition_yaml_translator.cpp
 )
@@ -43,7 +50,25 @@ ament_target_dependencies(
   my_robot_msgs
 )
 
-install(TARGETS manip_bt_executor
+target_include_directories(bt_yaml_executor PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+)
+
+target_compile_features(bt_yaml_executor PUBLIC c_std_99 cxx_std_17)
+
+target_link_libraries(bt_yaml_executor yaml-cpp)
+ament_target_dependencies(
+  bt_yaml_executor
+  ament_index_cpp
+  rclcpp
+  rclcpp_action
+  behaviortree_cpp_v3
+  moveit_ros_planning_interface
+  my_robot_msgs
+)
+
+install(TARGETS manip_bt_executor bt_yaml_executor
   DESTINATION lib/${PROJECT_NAME}
 )
 

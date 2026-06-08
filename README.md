@@ -85,6 +85,12 @@ Esse launch sobe os componentes necessarios para comando do braco e garra via Mo
 
 Por padrao, esse bringup tambem sobe os action servers de pick/place (`mtc_pick_action_node` e `mtc_place_action_node`).
 
+Por padrao, ao subir o bringup com `launch_pick_action:=true`, o arquivo `~/manip_ws/container_states.yaml` e resetado para deixar todos os containers vazios. Para preservar o estado anterior dos containers:
+
+```bash
+ros2 launch manip_bringup manip_bringup.launch.xml reset_container_states:=false
+```
+
 Argumentos disponiveis no bringup:
 
 - `use_mock_components` (default: `true`)
@@ -92,6 +98,7 @@ Argumentos disponiveis no bringup:
 - `launch_apriltag` (default: `false`)
 - `launch_pick_action` (default: `true`)
 - `launch_place_action` (default: `true`)
+- `reset_container_states` (default: `true`)
 - `apriltag_params_file` (default: `$(env HOME)/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml`)
 
 Para usar o hardware real (motores XM540), passe o argumento:
@@ -123,26 +130,26 @@ Observacao: o repositorio local pode nao conter os fontes de `apriltag_ros` e `r
 
 Action definida em `my_robot_msgs/action/PickTag.action`:
 
-- Goal: `tag_frame`, `container_pose`
+- Goal: `tag_frame`
 - Result: `success`, `message`
 - Feedback: `current_stage`
 
 Enviar goal manualmente:
 
 ```bash
-ros2 action send_goal /pick_tag my_robot_msgs/action/PickTag "{tag_frame: tag_M30_nut, container_pose: container1}" --feedback
+ros2 action send_goal /pick_tag my_robot_msgs/action/PickTag "{tag_frame: tag_M30_nut}" --feedback
 ```
 
 Action definida em `my_robot_msgs/action/PlaceTag.action`:
 
-- Goal: `container_pose`, `table_pose`
+- Goal: `tag_frame`, `table_pose`
 - Result: `success`, `message`
 - Feedback: `current_stage`
 
 Enviar goal manualmente:
 
 ```bash
-ros2 action send_goal /place_tag my_robot_msgs/action/PlaceTag "{container_pose: container1, table_pose: Mesa15.2}" --feedback
+ros2 action send_goal /place_tag my_robot_msgs/action/PlaceTag "{tag_frame: tag_M30_nut, table_pose: Mesa15}" --feedback
 ```
 
 ## Behavior Tree (`manip_bt`)
@@ -150,13 +157,14 @@ ros2 action send_goal /place_tag my_robot_msgs/action/PlaceTag "{container_pose:
 Executaveis disponiveis no pacote:
 
 - `ros2 run manip_bt manip_bt_executor`
+- `ros2 run manip_bt bt_yaml_executor`
 - `ros2 run manip_bt competition_yaml_translator`
 
 Nos BT customizados registrados no executor:
 
 - `GoToNamedPose` (porta: `pose_name`)
-- `PickTag` (portas: `tag_frame`, `container_pose`)
-- `PlaceTag` (portas: `container_pose`, `table_pose`)
+- `PickTag` (porta: `tag_frame`)
+- `PlaceTag` (portas: `tag_frame`, `table_pose`)
 
 ### Rodar o executor de BT
 
@@ -176,12 +184,41 @@ ros2 run manip_bt manip_bt_executor
 
 Observacao: atualmente o executor usa caminho fixo para a arvore `behavior_tree_manip/test2.xml` dentro do share do pacote `manip_bt`.
 
+### Rodar BT a partir de YAML de acoes
+
+O `bt_yaml_executor` le um YAML com a lista de acoes e monta a Behavior Tree em memoria. Ele nao precisa de um arquivo XML como `test1.xml` ou `test2.xml`: o XML equivalente e gerado temporariamente pelo proprio executor.
+
+Durante essa montagem, os valores do YAML sao salvos no blackboard da BT com chaves internas como `action_0_tag_frame` e `action_1_table_pose`. Os nos `PickTag` e `PlaceTag` recebem os dados por portas BT usando referencias no formato `{chave}`.
+
+Uso:
+
+```bash
+source install/setup.bash
+ros2 run manip_bt bt_yaml_executor <actions_yaml>
+```
+
+Exemplo:
+
+```bash
+source install/setup.bash
+ros2 run manip_bt bt_yaml_executor att1.yaml
+```
+
+Se nenhum arquivo for passado, o executor tenta usar `att1.yaml`. O caminho pode ser absoluto, relativo ao workspace, ou um arquivo dentro de `src/manip_bt/behavior_tree_manip/` instalado no share do pacote.
+
+Schema esperado do YAML:
+
+- `actions[].kind`: `pick` ou `place`
+- `actions[].tag_frame`: frame da tag usado no pick/place
+- `actions[].table_pose`: pose da mesa, obrigatoria em `place`
+- `actions[].ws`: workspace de destino, opcional em `place`
+
 ### Traduzir YAML de competicao para lista de acoes
 
 Uso:
 
 ```bash
-ros2 run manip_bt competition_yaml_translator <competition_yaml> <output_yaml> [apriltag_yaml]
+ros2 run manip_bt competition_yaml_translator <competition_yaml> <output_yaml> [apriltag_yaml] [ws_table_map_yaml]
 ```
 
 Exemplo com arquivo do pacote:
@@ -198,13 +235,22 @@ source install/setup.bash
 ros2 run manip_bt competition_yaml_translator \
 	src/manip_bt/behavior_tree_manip/ATT1.yaml \
 	att1_actions.yaml \
-	src/apriltag_ros/cfg/tags_36h11.yaml
+	src/apriltag_ros/cfg/tags_36h11.yaml \
+	src/manip_bt/behavior_tree_manip/ws_table_mapping.yaml
 ```
+
+Mapeamento WS -> mesa usado pelo tradutor (facil de ajustar):
+
+- Arquivo padrao: `src/manip_bt/behavior_tree_manip/ws_table_mapping.yaml`
+- Chave esperada no YAML: `ws_to_table_pose`
+- Exemplo de entrada: `WS_3: Mesa10`
 
 Saida gerada (schema minimo):
 
 - `actions[].kind`: `pick` ou `place`
 - `actions[].tag_frame`: frame da tag resolvido via arquivo AprilTag
+- `actions[].ws`: workspace de destino (somente `place`)
+- `actions[].table_pose`: pose de mesa resolvida pelo mapeamento WS -> mesa (somente `place`)
 
 ## Comando via `commmander`
 
@@ -536,4 +582,3 @@ ros2 launch realsense2_camera rs_launch.py \
 	enable_color:=true \
 	enable_depth:=true
 ```
-

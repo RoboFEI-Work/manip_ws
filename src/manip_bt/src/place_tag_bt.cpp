@@ -28,18 +28,18 @@ PlaceTagBT::PlaceTagBT(
 BT::PortsList PlaceTagBT::providedPorts()
 {
 	return {
-		BT::InputPort<std::string>("container_pose"),
+		BT::InputPort<std::string>("tag_frame"),
 		BT::InputPort<std::string>("table_pose")
 	};
 }
 
 BT::NodeStatus PlaceTagBT::onStart()
 {
-	std::string container_pose;
+	std::string tag_frame;
 	std::string table_pose;
 
-	if (!getInput("container_pose", container_pose)) {
-		RCLCPP_ERROR(rclcpp::get_logger("PlaceTagBT"), "Missing input port: container_pose");
+	if (!getInput("tag_frame", tag_frame)) {
+		RCLCPP_ERROR(rclcpp::get_logger("PlaceTagBT"), "Missing input port: tag_frame");
 		return BT::NodeStatus::FAILURE;
 	}
 
@@ -50,8 +50,8 @@ BT::NodeStatus PlaceTagBT::onStart()
 
 	RCLCPP_INFO(
 		rclcpp::get_logger("PlaceTagBT"),
-		"Sending PLACE goal: container_pose=%s table_pose=%s",
-		container_pose.c_str(),
+		"Sending PLACE goal: tag_frame=%s table_pose=%s",
+		tag_frame.c_str(),
 		table_pose.c_str());
 
 	if (!action_client_->wait_for_action_server(10s)) {
@@ -60,7 +60,7 @@ BT::NodeStatus PlaceTagBT::onStart()
 	}
 
 	PlaceTag::Goal goal_msg;
-	goal_msg.container_pose = container_pose;
+	goal_msg.tag_frame = tag_frame;
 	goal_msg.table_pose = table_pose;
 
 	goal_future_ = action_client_->async_send_goal(goal_msg);

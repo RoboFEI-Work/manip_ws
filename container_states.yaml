@@ -1,0 +1,13 @@
+containers:
+  container1:
+    occupied: false
+    tag_frame: ""
+    status: empty
+  container2:
+    occupied: false
+    tag_frame: ""
+    status: empty
+  container3:
+    occupied: false
+    tag_frame: ""
+    status: empty

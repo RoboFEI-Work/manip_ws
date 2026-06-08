@@ -15,8 +15,8 @@ objects:
   - { id: 21, type: ADVANCED, color: BLACK }
   - { id: 22, type: ADVANCED, color: BLACK }
   - { id: 23, type: ADVANCED, color: BLACK }
-  - { id: 24, type: ADVANCED, color: BLACK }
-  - { id: 25, type: ADVANCED, color: BLACK }
+  - { id: 7, type: ADVANCED, color: BLACK }
+  - { id: 3, type: ADVANCED, color: BLACK }
   - { id: 12, type: DECOY, color: BLUE, at_ws: WS_1 }
   - { id: 15, type: DECOY, color: BLUE, at_ws: WS_3 }
   - { id: 16, type: DECOY, color: BLUE, at_ws: WS_6 }
@@ -27,9 +27,9 @@ start_state:
   WS_3:
     obj_ids: []
   WS_4:
-    obj_ids: [21, 23, 24]
+    obj_ids: [21, 23, 7]
   WS_6:
-    obj_ids: [25]
+    obj_ids: [3]
   WS_8:
     obj_ids: []
   SH_2:
@@ -45,6 +45,6 @@ finish_state:
   WS_6:  
     obj_ids: []
   WS_8:  
-    obj_ids: [25, 23]
+    obj_ids: [3, 23]
   SH_2:  
-    obj_ids: [24]
+    obj_ids: [7]

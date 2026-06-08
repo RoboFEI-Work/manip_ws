@@ -3,10 +3,12 @@
 
 #include <moveit/move_group_interface/move_group_interface.hpp>
 
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <thread>
 
+#include "mtc_tutorial/container_state_store.hpp"
 #include "my_robot_msgs/action/place_tag.hpp"
 
 class PlaceActionServer : public rclcpp::Node
@@ -25,6 +27,13 @@ public:
     PlaceActionServer()
         : Node("place_action_server")
     {
+        const auto default_container_state_file = getDefaultContainerStatePath();
+        container_state_file_ = this->declare_parameter<std::string>(
+            "container_state_file",
+            default_container_state_file);
+        container_state_store_ =
+            std::make_unique<mtc_tutorial::ContainerStateStore>(container_state_file_);
+
         action_server_ =
             rclcpp_action::create_server<PlaceTag>(
                 this,
@@ -48,9 +57,19 @@ public:
     }
 
 private:
+    static std::string getDefaultContainerStatePath()
+    {
+        const char * home = std::getenv("HOME");
+        if (home != nullptr && home[0] != '\0') {
+            return std::string(home) + "/manip_ws/container_states.yaml";
+        }
+        return "container_states.yaml";
+    }
 
     rclcpp_action::Server<PlaceTag>::SharedPtr
         action_server_;
+    std::string container_state_file_;
+    std::unique_ptr<mtc_tutorial::ContainerStateStore> container_state_store_;
 
     void publish_stage(
         const std::shared_ptr<GoalHandlePlaceTag> & goal_handle,
@@ -92,8 +111,8 @@ private:
     {
         RCLCPP_INFO(
             get_logger(),
-            "Received place goal container=%s table=%s",
-            goal->container_pose.c_str(),
+            "Received place goal tag=%s table=%s",
+            goal->tag_frame.c_str(),
             goal->table_pose.c_str());
 
         return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
@@ -133,6 +152,20 @@ private:
         auto arm = std::make_shared<MoveGroupInterface>(shared_from_this(), "arm");
         auto gripper = std::make_shared<MoveGroupInterface>(shared_from_this(), "gripper");
 
+        std::string container_pose;
+        std::string lookup_error;
+        if (!container_state_store_->findContainerByTag(
+                goal->tag_frame,
+                &container_pose,
+                &lookup_error))
+        {
+            result->success = false;
+            result->message = "Place failed: could not resolve container for tag '" +
+                goal->tag_frame + "' from yaml: " + lookup_error;
+            goal_handle->abort(result);
+            return;
+        }
+
         arm->setPoseReferenceFrame("base_link");
         arm->setPlanningTime(15.0);
         arm->setNumPlanningAttempts(20);
@@ -145,18 +178,34 @@ private:
             run_place_cycle(
                 arm,
                 gripper,
-                goal->container_pose,
+                container_pose,
                 goal->table_pose,
                 goal_handle);
 
-        result->success = success;
+        bool state_write_success = true;
+        std::string state_write_error;
+        if (success) {
+            state_write_success =
+                container_state_store_->setEmpty(container_pose, &state_write_error);
+            if (!state_write_success) {
+                RCLCPP_ERROR(
+                    get_logger(),
+                    "Failed to update container state file %s: %s",
+                    container_state_file_.c_str(),
+                    state_write_error.c_str());
+            }
+        }
+
+        result->success = success && state_write_success;
 
         result->message =
-            success ?
+            result->success ?
             "Place completed" :
-            "Place failed";
+            (!success ?
+            "Place failed" :
+            "Place completed but failed to update container state yaml: " + state_write_error);
 
-        if (success)
+        if (result->success)
         {
             publish_stage(goal_handle, "done");
             goal_handle->succeed(result);

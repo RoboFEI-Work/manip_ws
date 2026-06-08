@@ -12,6 +12,7 @@
             <arg name="launch_apriltag" default="false"/>
             <arg name="launch_pick_action" default="true"/>
             <arg name="launch_place_action" default="true"/>
+            <arg name="reset_container_states" default="true"/>
             <arg name="apriltag_params_file" default="$(env HOME)/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml"/>
 
     <node pkg="robot_state_publisher" exec="robot_state_publisher" >
@@ -64,7 +65,9 @@
     <node pkg="manip_commander" exec="commmander"/>
 
             <group if="$(var launch_pick_action)">
-                  <node pkg="mtc_tutorial" exec="mtc_pick_action_node" output="screen"/>
+                  <node pkg="mtc_tutorial" exec="mtc_pick_action_node" output="screen">
+                        <param name="reset_container_states_on_start" value="$(var reset_container_states)"/>
+                  </node>
             </group>
 
             <group if="$(var launch_place_action)">

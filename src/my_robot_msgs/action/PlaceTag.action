@@ -1,4 +1,4 @@
-string container_pose
+string tag_frame
 string table_pose
 
 ---

@@ -1,6 +1,10 @@
 actions:
   - kind: pick
     tag_frame: tag_S40_40_B
+  - kind: place
+    tag_frame: tag_S40_40_B
+    ws: WS_8
+    table_pose: Mesa15
   - kind: pick
     tag_frame: tag_M30_nut
   - kind: place
@@ -29,9 +33,5 @@ actions:
     tag_frame: tag_Motor2
   - kind: place
     tag_frame: tag_Motor2
-    ws: WS_8
-    table_pose: Mesa15
-  - kind: place
-    tag_frame: tag_S40_40_B
     ws: WS_8
     table_pose: Mesa15
