@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <regex>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -23,12 +24,27 @@ struct ObjectInfo
   std::string color;
 };
 
+struct ContainerInfo
+{
+  int id = -1;
+  std::string color;
+  std::string ws;
+  std::string pose_name;
+};
+
+struct ContainerAssignment
+{
+  std::string container_pose;
+  std::string container_ws;
+};
+
 struct TransferItem
 {
   int obj_id = -1;
   std::string tag_frame;
   std::string from_ws;
   std::string to_ws;
+  std::string destination_container_pose;
   bool needs_pick = false;
   bool needs_place = false;
 };
@@ -129,6 +145,41 @@ std::map<int, ObjectInfo> parseObjects(const YAML::Node & root, std::set<int> & 
   return by_id;
 }
 
+std::map<int, ContainerInfo> parseContainers(const YAML::Node & root)
+{
+  std::map<int, ContainerInfo> by_id;
+  const YAML::Node containers = root["containers"];
+  if (!containers) {
+    return by_id;
+  }
+  if (!containers.IsSequence()) {
+    throw std::runtime_error("containers must be a sequence when present");
+  }
+
+  for (const auto & container : containers) {
+    const int id = parseObjectId(container["id"]);
+    if (by_id.count(id) > 0) {
+      throw std::runtime_error("Duplicate container id in containers: " + std::to_string(id));
+    }
+
+    ContainerInfo info;
+    info.id = id;
+    info.color = trim(container["color"].as<std::string>(""));
+    info.ws = trim(container["at"].as<std::string>(""));
+    if (info.ws.empty()) {
+      info.ws = trim(container["at_ws"].as<std::string>(""));
+    }
+    if (info.ws.empty()) {
+      throw std::runtime_error("containers id " + std::to_string(id) + " missing at/at_ws");
+    }
+
+    info.pose_name = "ct" + std::to_string(id);
+    by_id[id] = info;
+  }
+
+  return by_id;
+}
+
 std::map<int, std::string> buildStateIndex(
   const YAML::Node & state_node,
   const std::set<std::string> & active_areas,
@@ -163,6 +214,70 @@ std::map<int, std::string> buildStateIndex(
   return object_to_ws;
 }
 
+std::map<int, ContainerAssignment> parseContainerAssignments(
+  const YAML::Node & root,
+  const std::map<int, ContainerInfo> & containers)
+{
+  std::map<int, ContainerAssignment> assignments;
+  if (containers.empty()) {
+    return assignments;
+  }
+
+  const YAML::Node finish_state = root["finish_state"];
+  if (!finish_state || !finish_state.IsMap()) {
+    return assignments;
+  }
+
+  const std::regex inside_regex("\\binside\\s+0*([0-9]+)\\b", std::regex_constants::icase);
+  const std::regex object_regex("\\bO\\s*0*([0-9]+)\\b", std::regex_constants::icase);
+
+  for (const auto & ws_it : finish_state) {
+    const YAML::Node constraints = ws_it.second["constraints"];
+    if (!constraints) {
+      continue;
+    }
+    if (!constraints.IsSequence()) {
+      throw std::runtime_error("finish_state constraints must be a sequence");
+    }
+
+    for (const auto & constraint_node : constraints) {
+      const std::string constraint = trim(constraint_node.as<std::string>());
+      std::smatch inside_match;
+      if (!std::regex_search(constraint, inside_match, inside_regex)) {
+        continue;
+      }
+
+      const int container_id = std::stoi(inside_match[1].str());
+      const auto container_it = containers.find(container_id);
+      if (container_it == containers.end()) {
+        throw std::runtime_error(
+                "Constraint references unknown container id: " + std::to_string(container_id));
+      }
+
+      const std::string objects_part = constraint.substr(0, inside_match.position());
+      for (
+        std::sregex_iterator it(objects_part.begin(), objects_part.end(), object_regex), end;
+        it != end;
+        ++it)
+      {
+        const int obj_id = std::stoi((*it)[1].str());
+        if (assignments.count(obj_id) > 0) {
+          throw std::runtime_error(
+                  "Object id " + std::to_string(obj_id) +
+                  " has more than one container constraint");
+        }
+
+        ContainerAssignment assignment;
+        assignment.container_pose = container_it->second.pose_name;
+        assignment.container_ws = container_it->second.ws;
+        assignments[obj_id] = assignment;
+      }
+    }
+  }
+
+  return assignments;
+}
+
 std::map<int, std::string> parseApriltagIdToFrame(const std::string & apriltag_yaml_path)
 {
   const YAML::Node tag_root = YAML::LoadFile(apriltag_yaml_path);
@@ -191,7 +306,8 @@ std::vector<TransferItem> buildTransfers(
   const std::map<int, std::string> & start_index,
   const std::map<int, std::string> & finish_index,
   const std::map<int, std::string> & id_to_frame,
-  const std::set<int> & ignored_object_ids)
+  const std::set<int> & ignored_object_ids,
+  const std::map<int, ContainerAssignment> & container_assignments)
 {
   std::set<int> all_ids;
   for (const auto & [obj_id, _] : objects) {
@@ -203,6 +319,11 @@ std::vector<TransferItem> buildTransfers(
     }
   }
   for (const auto & [obj_id, _] : finish_index) {
+    if (ignored_object_ids.count(obj_id) == 0) {
+      all_ids.insert(obj_id);
+    }
+  }
+  for (const auto & [obj_id, _] : container_assignments) {
     if (ignored_object_ids.count(obj_id) == 0) {
       all_ids.insert(obj_id);
     }
@@ -227,6 +348,18 @@ std::vector<TransferItem> buildTransfers(
       item.to_ws = to_it->second;
     }
 
+    const auto assignment_it = container_assignments.find(obj_id);
+    if (assignment_it != container_assignments.end()) {
+      item.destination_container_pose = assignment_it->second.container_pose;
+      if (item.to_ws.empty()) {
+        item.to_ws = assignment_it->second.container_ws;
+      } else if (item.to_ws != assignment_it->second.container_ws) {
+        throw std::runtime_error(
+                "Object id " + std::to_string(obj_id) +
+                " finish WS does not match destination container WS");
+      }
+    }
+
     if (frame_it != id_to_frame.end()) {
       item.tag_frame = frame_it->second;
     }
@@ -234,11 +367,12 @@ std::vector<TransferItem> buildTransfers(
     const bool has_start = !item.from_ws.empty();
     const bool has_finish = !item.to_ws.empty();
     const bool moved = has_start && has_finish && (item.from_ws != item.to_ws);
+    const bool assigned_to_container = !item.destination_container_pose.empty();
     const bool removed = has_start && !has_finish;
     const bool added = !has_start && has_finish;
 
-    item.needs_pick = moved || removed;
-    item.needs_place = moved || added;
+    item.needs_pick = moved || removed || assigned_to_container;
+    item.needs_place = moved || added || assigned_to_container;
 
     if (!item.needs_pick && !item.needs_place) {
       continue;
@@ -293,12 +427,16 @@ YAML::Node buildOutput(
 
       place["ws"] = t.to_ws;
 
-      const auto ws_it = ws_to_table_pose.find(t.to_ws);
-      if (ws_it == ws_to_table_pose.end()) {
-        throw std::runtime_error(
-                "Missing WS->Mesa mapping for destination workspace: " + t.to_ws);
+      if (!t.destination_container_pose.empty()) {
+        place["table_pose"] = t.destination_container_pose;
+      } else {
+        const auto ws_it = ws_to_table_pose.find(t.to_ws);
+        if (ws_it == ws_to_table_pose.end()) {
+          throw std::runtime_error(
+                  "Missing WS->Mesa mapping for destination workspace: " + t.to_ws);
+        }
+        place["table_pose"] = ws_it->second;
       }
-      place["table_pose"] = ws_it->second;
 
       action_seq.push_back(place);
     }
@@ -436,10 +574,19 @@ int main(int argc, char ** argv)
     const auto active_areas = parseActiveAreas(competition_root);
     std::set<int> ignored_object_ids;
     const auto objects = parseObjects(competition_root, ignored_object_ids);
+    const auto containers = parseContainers(competition_root);
+    const auto container_assignments = parseContainerAssignments(competition_root, containers);
     const auto start_index = buildStateIndex(competition_root["start_state"], active_areas, "start_state");
     const auto finish_index = buildStateIndex(competition_root["finish_state"], active_areas, "finish_state");
     const auto id_to_frame = parseApriltagIdToFrame(apriltag_yaml_path);
-    const auto transfers = buildTransfers(objects, start_index, finish_index, id_to_frame, ignored_object_ids);
+    const auto transfers =
+      buildTransfers(
+        objects,
+        start_index,
+        finish_index,
+        id_to_frame,
+        ignored_object_ids,
+        container_assignments);
     const auto output = buildOutput(competition_root, transfers, apriltag_yaml_path, ws_to_table_pose);
 
     YAML::Emitter out;

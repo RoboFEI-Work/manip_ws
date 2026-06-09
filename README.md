@@ -210,7 +210,7 @@ Schema esperado do YAML:
 
 - `actions[].kind`: `pick` ou `place`
 - `actions[].tag_frame`: frame da tag usado no pick/place
-- `actions[].table_pose`: pose da mesa, obrigatoria em `place`
+- `actions[].table_pose`: pose de destino, obrigatoria em `place`; pode ser uma mesa (`Mesa15`) ou uma pose de container (`ct10`)
 - `actions[].ws`: workspace de destino, opcional em `place`
 
 ### Traduzir YAML de competicao para lista de acoes
@@ -250,7 +250,9 @@ Saida gerada (schema minimo):
 - `actions[].kind`: `pick` ou `place`
 - `actions[].tag_frame`: frame da tag resolvido via arquivo AprilTag
 - `actions[].ws`: workspace de destino (somente `place`)
-- `actions[].table_pose`: pose de mesa resolvida pelo mapeamento WS -> mesa (somente `place`)
+- `actions[].table_pose`: pose de destino (somente `place`); usa o mapeamento WS -> mesa quando o objeto vai para uma area, ou `ct10`, `ct16`, etc. quando a tarefa tem constraints de container
+
+Quando o YAML de competicao possui a chave `containers` e constraints no `finish_state`, por exemplo `O2,O4 must be inside 10 (BLUE)`, o tradutor direciona esses objetos para a pose `ct10`. Ou seja, o nome da pose de destino usa o id real do container: container id `16` vira `ct16`.
 
 ## Comando via `commmander`
 

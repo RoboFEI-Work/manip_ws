@@ -68,6 +68,9 @@ ament_target_dependencies(
   "my_robot_msgs"
   "rclcpp"
   "rclcpp_action"
+  "tf2"
+  "tf2_ros"
+  "tf2_geometry_msgs"
 )
 target_link_libraries(mtc_place_action_node container_state_store)
 

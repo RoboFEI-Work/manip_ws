@@ -657,12 +657,14 @@ private:
             return false;
         }
 
-        publish_stage(goal_handle, "returning_pre_container");
+        publish_stage(goal_handle, "going pre_container_final");
         arm->setStartStateToCurrentState();
+        arm->setEndEffectorLink("tcp");
         arm->setNamedTarget("pre_container");
-        if (!planAndExecute(arm, cycle_name + " return pre_container")) {
+        if (!planAndExecute(arm, cycle_name + " pre_container final")) {
             return false;
         }
+
 
         return true;
     }
@@ -742,13 +744,7 @@ private:
             "ACTION_CYCLE",
             goal_handle);
 
-        publish_stage(goal_handle, "returning_pegar_obj_final");
-        arm->setStartStateToCurrentState();
-        arm->setEndEffectorLink("tcp");
-        arm->setNamedTarget("pegar_obj");
-        const bool return_success = planAndExecute(arm, "final return pegar_obj");
-
-        const bool success = cycle_success && return_success;
+        const bool success = cycle_success;
 
         bool state_write_success = true;
         std::string state_write_error;
@@ -769,15 +765,11 @@ private:
         result->success = success && state_write_success;
         if (result->success) {
             result->message = "Pick completed";
-        } else if (!cycle_success && !return_success) {
-            result->message = "Pick failed and failed returning to pegar_obj";
         } else if (!cycle_success) {
             result->message = "Pick failed";
         } else if (!state_write_success) {
             result->message =
                 "Pick completed but failed to update container state yaml: " + state_write_error;
-        } else {
-            result->message = "Pick completed but failed returning to pegar_obj";
         }
 
         if (result->success) {

@@ -23,6 +23,8 @@
 #include <thread>
 #include <cmath>
 #include <algorithm>
+#include <cctype>
+#include <vector>
 
 #if __has_include(<tf2_geometry_msgs/tf2_geometry_msgs.hpp>)
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -57,6 +59,14 @@ private:
       const std::string& reference_frame,
       const std::string& tag_frame) const;
 
+  bool waitForTagTransform(
+      const std::string& reference_frame,
+      const std::string& tag_frame,
+      geometry_msgs::msg::TransformStamped& out_tf,
+      const std::chrono::milliseconds timeout,
+      const std::chrono::milliseconds retry_period,
+      const std::string& cycle_name) const;
+
   bool moveToTarget(
       const std::shared_ptr<
           moveit::planning_interface::MoveGroupInterface>& arm,
@@ -64,6 +74,13 @@ private:
       const std::string& eef_link,
       const std::string& label,
       bool use_orientation_constraint);
+
+  bool moveToPlaceTarget(
+      const std::shared_ptr<
+          moveit::planning_interface::MoveGroupInterface>& arm,
+      const std::string& place_target,
+      double container_z_offset,
+      const std::string& label);
 
   mtc::Task createApproachTask();
 
@@ -89,6 +106,208 @@ MTCTaskNode::MTCTaskNode(
       std::make_shared<
           tf2_ros::TransformListener>(
           *tf_buffer_);
+
+  // Defaults needed when mtc_node is started standalone, outside MoveIt launch params.
+  if (!node_->has_parameter("ompl.planning_plugins"))
+  {
+    node_->declare_parameter<std::vector<std::string>>(
+        "ompl.planning_plugins",
+        std::vector<std::string>{"ompl_interface/OMPLPlanner"});
+  }
+  if (!node_->has_parameter("ompl.planning_plugin"))
+  {
+    node_->declare_parameter<std::string>(
+        "ompl.planning_plugin",
+        "ompl_interface/OMPLPlanner");
+  }
+  if (!node_->has_parameter("ompl.request_adapters"))
+  {
+    node_->declare_parameter<std::vector<std::string>>(
+        "ompl.request_adapters",
+        std::vector<std::string>{
+            "default_planning_request_adapters/ResolveConstraintFrames",
+            "default_planning_request_adapters/ValidateWorkspaceBounds",
+            "default_planning_request_adapters/CheckStartStateBounds",
+            "default_planning_request_adapters/CheckStartStateCollision"});
+  }
+  if (!node_->has_parameter("ompl.response_adapters"))
+  {
+    node_->declare_parameter<std::vector<std::string>>(
+        "ompl.response_adapters",
+        std::vector<std::string>{
+            "default_planning_response_adapters/ValidateSolution",
+            "default_planning_response_adapters/DisplayMotionPath"});
+  }
+  if (!node_->has_parameter("ompl.start_state_max_bounds_error"))
+  {
+    node_->declare_parameter<double>(
+        "ompl.start_state_max_bounds_error",
+        0.1);
+  }
+
+  if (!node_->has_parameter("robot_description_kinematics.arm.kinematics_solver"))
+  {
+    node_->declare_parameter<std::string>(
+        "robot_description_kinematics.arm.kinematics_solver",
+        "pick_ik/PickIkPlugin");
+  }
+  if (!node_->has_parameter("robot_description_kinematics.arm.kinematics_solver_timeout"))
+  {
+    node_->declare_parameter<double>(
+        "robot_description_kinematics.arm.kinematics_solver_timeout",
+        0.2);
+  }
+  if (!node_->has_parameter("robot_description_kinematics.arm.mode"))
+  {
+    node_->declare_parameter<std::string>(
+        "robot_description_kinematics.arm.mode",
+        "global");
+  }
+  if (!node_->has_parameter("robot_description_kinematics.arm.position_scale"))
+  {
+    node_->declare_parameter<double>(
+        "robot_description_kinematics.arm.position_scale",
+        1.0);
+  }
+  if (!node_->has_parameter("robot_description_kinematics.arm.rotation_scale"))
+  {
+    node_->declare_parameter<double>(
+        "robot_description_kinematics.arm.rotation_scale",
+        0.03);
+  }
+  if (!node_->has_parameter("robot_description_kinematics.arm.position_threshold"))
+  {
+    node_->declare_parameter<double>(
+        "robot_description_kinematics.arm.position_threshold",
+        0.002);
+  }
+  if (!node_->has_parameter("robot_description_kinematics.arm.orientation_threshold"))
+  {
+    node_->declare_parameter<double>(
+        "robot_description_kinematics.arm.orientation_threshold",
+        0.30);
+  }
+  if (!node_->has_parameter("robot_description_kinematics.arm.cost_threshold"))
+  {
+    node_->declare_parameter<double>(
+        "robot_description_kinematics.arm.cost_threshold",
+        0.001);
+  }
+  if (!node_->has_parameter("robot_description_kinematics.arm.minimal_displacement_weight"))
+  {
+    node_->declare_parameter<double>(
+        "robot_description_kinematics.arm.minimal_displacement_weight",
+        0.02);
+  }
+  if (!node_->has_parameter("robot_description_kinematics.arm.gd_step_size"))
+  {
+    node_->declare_parameter<double>(
+        "robot_description_kinematics.arm.gd_step_size",
+        0.0008);
+  }
+
+  if (!node_->has_parameter("arm.kinematics_solver"))
+  {
+    node_->declare_parameter<std::string>(
+        "arm.kinematics_solver",
+        "pick_ik/PickIkPlugin");
+  }
+  if (!node_->has_parameter("arm.kinematics_solver_timeout"))
+  {
+    node_->declare_parameter<double>(
+        "arm.kinematics_solver_timeout",
+        0.2);
+  }
+  if (!node_->has_parameter("arm.mode"))
+  {
+    node_->declare_parameter<std::string>(
+        "arm.mode",
+        "global");
+  }
+  if (!node_->has_parameter("arm.position_scale"))
+  {
+    node_->declare_parameter<double>(
+        "arm.position_scale",
+        1.0);
+  }
+  if (!node_->has_parameter("arm.rotation_scale"))
+  {
+    node_->declare_parameter<double>(
+        "arm.rotation_scale",
+        0.03);
+  }
+  if (!node_->has_parameter("arm.position_threshold"))
+  {
+    node_->declare_parameter<double>(
+        "arm.position_threshold",
+        0.002);
+  }
+  if (!node_->has_parameter("arm.orientation_threshold"))
+  {
+    node_->declare_parameter<double>(
+        "arm.orientation_threshold",
+        0.30);
+  }
+  if (!node_->has_parameter("arm.cost_threshold"))
+  {
+    node_->declare_parameter<double>(
+        "arm.cost_threshold",
+        0.001);
+  }
+  if (!node_->has_parameter("arm.minimal_displacement_weight"))
+  {
+    node_->declare_parameter<double>(
+        "arm.minimal_displacement_weight",
+        0.02);
+  }
+  if (!node_->has_parameter("arm.gd_step_size"))
+  {
+    node_->declare_parameter<double>(
+        "arm.gd_step_size",
+        0.0008);
+  }
+
+  std::vector<std::string> planning_plugins;
+  if (!node_->get_parameter("ompl.planning_plugins", planning_plugins) ||
+      planning_plugins.empty() ||
+      planning_plugins.front().empty())
+  {
+    node_->set_parameter(
+        rclcpp::Parameter(
+            "ompl.planning_plugins",
+            std::vector<std::string>{"ompl_interface/OMPLPlanner"}));
+  }
+
+  std::string planning_plugin;
+  if (!node_->get_parameter("ompl.planning_plugin", planning_plugin) ||
+      planning_plugin.empty())
+  {
+    node_->set_parameter(
+        rclcpp::Parameter(
+            "ompl.planning_plugin",
+            "ompl_interface/OMPLPlanner"));
+  }
+
+  std::string kinematics_solver;
+  if (!node_->get_parameter(
+          "robot_description_kinematics.arm.kinematics_solver",
+          kinematics_solver) ||
+      kinematics_solver.empty())
+  {
+    node_->set_parameter(
+        rclcpp::Parameter(
+            "robot_description_kinematics.arm.kinematics_solver",
+            "pick_ik/PickIkPlugin"));
+  }
+
+  if (!node_->get_parameter("arm.kinematics_solver", kinematics_solver) ||
+      kinematics_solver.empty())
+  {
+    node_->set_parameter(
+        rclcpp::Parameter(
+            "arm.kinematics_solver",
+            "pick_ik/PickIkPlugin"));
+  }
 }
 
 rclcpp::node_interfaces::NodeBaseInterface::SharedPtr
@@ -170,6 +389,52 @@ MTCTaskNode::getTagTransform(
       tag_frame,
       tf2::TimePointZero,
       tf2::durationFromSec(0.5));
+}
+
+bool MTCTaskNode::waitForTagTransform(
+    const std::string& reference_frame,
+    const std::string& tag_frame,
+    geometry_msgs::msg::TransformStamped& out_tf,
+    const std::chrono::milliseconds timeout,
+    const std::chrono::milliseconds retry_period,
+    const std::string& cycle_name) const
+{
+  const auto start =
+      std::chrono::steady_clock::now();
+
+  tf2::TransformException last_ex(
+      "unknown TF error");
+
+  while (std::chrono::steady_clock::now() - start <
+         timeout)
+  {
+    try
+    {
+      out_tf =
+          getTagTransform(
+              reference_frame,
+              tag_frame);
+
+      return true;
+    }
+    catch (const tf2::TransformException& ex)
+    {
+      last_ex = ex;
+    }
+
+    rclcpp::sleep_for(
+        retry_period);
+  }
+
+  RCLCPP_ERROR_STREAM(
+      LOGGER,
+      "[" << cycle_name << "] Timed out waiting TF "
+          << reference_frame << " <- " << tag_frame
+          << " after " << timeout.count()
+          << " ms. Last error: "
+          << last_ex.what());
+
+  return false;
 }
 
 mtc::Task MTCTaskNode::createApproachTask()
@@ -370,6 +635,177 @@ bool MTCTaskNode::moveToTarget(
   return true;
 }
 
+bool MTCTaskNode::moveToPlaceTarget(
+    const std::shared_ptr<
+        moveit::planning_interface::MoveGroupInterface>& arm,
+    const std::string& place_target,
+    double container_z_offset,
+    const std::string& label)
+{
+  const auto is_container_target =
+      [](const std::string& target) -> bool
+      {
+        if (target.size() <= 2 ||
+            target[0] != 'c' ||
+            target[1] != 't')
+        {
+          return false;
+        }
+
+        for (std::size_t i = 2; i < target.size(); ++i)
+        {
+          if (!std::isdigit(static_cast<unsigned char>(target[i])))
+          {
+            return false;
+          }
+        }
+
+        return true;
+      };
+
+  if (!is_container_target(place_target))
+  {
+    arm->setStartStateToCurrentState();
+    arm->setEndEffectorLink("tcp");
+    arm->setNamedTarget(place_target);
+
+    moveit::planning_interface::MoveGroupInterface::Plan plan;
+    const bool success =
+        (arm->plan(plan) ==
+         moveit::core::MoveItErrorCode::SUCCESS);
+
+    if (!success)
+    {
+      RCLCPP_ERROR_STREAM(
+          LOGGER,
+          "Planning failed: "
+              << label
+              << " "
+              << place_target);
+
+      return false;
+    }
+
+    const auto exec_result =
+        arm->execute(plan);
+
+    if (exec_result !=
+        moveit::core::MoveItErrorCode::
+            SUCCESS)
+    {
+      RCLCPP_ERROR_STREAM(
+          LOGGER,
+          "Execution failed: "
+              << label
+              << " "
+              << place_target);
+
+      return false;
+    }
+
+    return true;
+  }
+
+  geometry_msgs::msg::TransformStamped target_tf;
+  if (!waitForTagTransform(
+          "base_link",
+          place_target,
+          target_tf,
+          std::chrono::milliseconds(5000),
+          std::chrono::milliseconds(200),
+          label + " detect_container_tag"))
+  {
+    return false;
+  }
+
+  constexpr double kTagXNearZero = 0.1;
+  const double tag_x =
+      target_tf.transform.translation.x;
+
+  RCLCPP_INFO_STREAM(
+      LOGGER,
+      "[" << label << "] ct target x="
+          << tag_x);
+
+  if (std::abs(tag_x) > kTagXNearZero)
+  {
+    arm->setStartStateToCurrentState();
+    arm->setEndEffectorLink("tcp");
+
+    if (tag_x > 0.0)
+    {
+      arm->setNamedTarget("tag_direita");
+
+      moveit::planning_interface::MoveGroupInterface::Plan plan;
+      const bool success =
+          (arm->plan(plan) ==
+           moveit::core::MoveItErrorCode::SUCCESS);
+
+      if (!success ||
+          arm->execute(plan) !=
+              moveit::core::MoveItErrorCode::SUCCESS)
+      {
+        RCLCPP_ERROR_STREAM(
+            LOGGER,
+            "Failed pre-approach tag_direita for "
+                << place_target);
+        return false;
+      }
+    }
+    else
+    {
+      arm->setNamedTarget("tag_esquerda");
+
+      moveit::planning_interface::MoveGroupInterface::Plan plan;
+      const bool success =
+          (arm->plan(plan) ==
+           moveit::core::MoveItErrorCode::SUCCESS);
+
+      if (!success ||
+          arm->execute(plan) !=
+              moveit::core::MoveItErrorCode::SUCCESS)
+      {
+        RCLCPP_ERROR_STREAM(
+            LOGGER,
+            "Failed pre-approach tag_esquerda for "
+                << place_target);
+        return false;
+      }
+    }
+  }
+
+  rclcpp::sleep_for(
+      std::chrono::milliseconds(1000));
+
+  if (!waitForTagTransform(
+          "base_link",
+          place_target,
+          target_tf,
+          std::chrono::milliseconds(3000),
+          std::chrono::milliseconds(200),
+          label + " final_container_approach"))
+  {
+    return false;
+  }
+
+  target_tf.transform.translation.z +=
+      container_z_offset;
+
+  RCLCPP_INFO_STREAM(
+      LOGGER,
+      "Place em container: alvo="
+          << place_target
+          << " z_offset="
+          << container_z_offset);
+
+  return moveToTarget(
+      arm,
+      target_tf,
+      "tcp",
+      label + " above " + place_target,
+      true);
+}
+
 void MTCTaskNode::doTask()
 {
   using MoveGroupInterface =
@@ -406,6 +842,51 @@ void MTCTaskNode::doTask()
   gripper->setMaxAccelerationScalingFactor(
       1.0);
 
+  std::string place_target = "ct14";
+  if (node_->has_parameter("place_target"))
+  {
+    node_->get_parameter(
+        "place_target",
+        place_target);
+  }
+  else
+  {
+    place_target =
+        node_->declare_parameter<std::string>(
+            "place_target",
+            place_target);
+  }
+
+  std::string source_container = "container1";
+  if (node_->has_parameter("source_container"))
+  {
+    node_->get_parameter(
+        "source_container",
+        source_container);
+  }
+  else
+  {
+    source_container =
+        node_->declare_parameter<std::string>(
+            "source_container",
+            source_container);
+  }
+
+  double container_place_z_offset = 0.1;
+  if (node_->has_parameter("container_place_z_offset"))
+  {
+    node_->get_parameter(
+        "container_place_z_offset",
+        container_place_z_offset);
+  }
+  else
+  {
+    container_place_z_offset =
+        node_->declare_parameter<double>(
+            "container_place_z_offset",
+            container_place_z_offset);
+  }
+
   auto planAndExecute =
       [&](std::shared_ptr<
               MoveGroupInterface>& iface,
@@ -436,207 +917,10 @@ void MTCTaskNode::doTask()
                SUCCESS;
   };
 
-  // =====================================================
-  // OPEN GRIPPER
-  // =====================================================
-
-  gripper->setStartStateToCurrentState();
-
-  gripper->setNamedTarget(
-      "gripper_open");
-
-  if (!planAndExecute(
-          gripper,
-          "open gripper"))
-  {
-    return;
-  }
-
-  // =====================================================
-  // PEGAR_OBJ (initial observation pose)
-  // =====================================================
-
-  arm->setStartStateToCurrentState();
-  arm->setEndEffectorLink("tcp");
-  arm->setNamedTarget("pegar_obj");
-  if (!planAndExecute(arm, "pegar_obj initial"))
-  {
-    return;
-  }
-
-  // =====================================================
-  // APPROACH TASK
-  // =====================================================
-
-  mtc::Task approach_task;
-
-  try
-  {
-    approach_task =
-        createApproachTask();
-  }
-  catch (const std::exception& e)
-  {
-    RCLCPP_ERROR_STREAM(
-        LOGGER,
-        "Approach creation failed: "
-            << e.what());
-
-    return;
-  }
-
-  if (!executeTask(
-          approach_task,
-          "approach"))
-  {
-    return;
-  }
-
-  // =====================================================
-  // WAIT
-  // =====================================================
-
-  rclcpp::sleep_for(
-      std::chrono::milliseconds(
-          2000));
-
-    auto run_pick_cycle =
-            [&](const std::string& tag_frame,
-                    const std::string& container_pose,
-                    const std::string& cycle_name) -> bool
-    {
-        geometry_msgs::msg::TransformStamped tag_tf;
-
-        try
-        {
-            tag_tf = getTagTransform("base_link", tag_frame);
-        }
-        catch (const tf2::TransformException& ex)
-        {
-            RCLCPP_ERROR_STREAM(LOGGER, "[" << cycle_name << "] " << ex.what());
-            return false;
-        }
-
-        // =====================================================
-        // PRE-APPROACH (x sign -> named pose)
-        // =====================================================
-
-        RCLCPP_INFO_STREAM(
-                LOGGER,
-                "========== " << cycle_name << " PRE-APPROACH BY TAG X SIGN ==========");
-
-        constexpr double kTagXNearZero = 0.1;  // 1 cm deadband
-        const double tag_x = tag_tf.transform.translation.x;
-
-        RCLCPP_INFO_STREAM(
-                LOGGER,
-                "[" << cycle_name << "] tag_x lido para decisao de pose=" << tag_x);
-
-        if (std::abs(tag_x) <= kTagXNearZero)
-        {
-            RCLCPP_INFO_STREAM(
-                    LOGGER,
-                    "[" << cycle_name << "] tag_x perto de zero. Nao envia movimento de pre-aproximacao.");
-        }
-        else
-        {
-            arm->setStartStateToCurrentState();
-            arm->setEndEffectorLink("tcp");
-
-            if (tag_x > 0.0)
-            {
-                RCLCPP_INFO_STREAM(LOGGER, "[" << cycle_name << "] tag_x positivo -> pose tag_direita");
-                arm->setNamedTarget("tag_direita");
-                if (!planAndExecute(arm, cycle_name + " go tag_direita")) { return false; }
-            }
-            else
-            {
-                RCLCPP_INFO_STREAM(LOGGER, "[" << cycle_name << "] tag_x negativo -> pose tag_esquerda");
-                arm->setNamedTarget("tag_esquerda");
-                if (!planAndExecute(arm, cycle_name + " go tag_esquerda")) { return false; }
-            }
-        }
-
-        rclcpp::sleep_for(std::chrono::milliseconds(1000));
-
-        try
-        {
-            tag_tf = getTagTransform("base_link", tag_frame);
-        }
-        catch (const tf2::TransformException& ex)
-        {
-            RCLCPP_ERROR_STREAM(LOGGER, "[" << cycle_name << "] " << ex.what());
-            return false;
-        }
-
-        // =====================================================
-        // FINAL APPROACH (TCP)
-        // =====================================================
-
-        RCLCPP_INFO_STREAM(LOGGER, "========== " << cycle_name << " FINAL APPROACH TCP ==========");
-
-        if (!moveToTarget(arm, tag_tf, "tcp", cycle_name + " tcp final", true))
-        {
-            return false;
-        }
-
-        // CLOSE GRIPPER
-        gripper->setStartStateToCurrentState();
-        gripper->setNamedTarget("gripper_close");
-        if (!planAndExecute(gripper, cycle_name + " close gripper")) { return false; }
-
-        // RETURN TO PEGAR_OBJ AFTER PICK
-        arm->setStartStateToCurrentState();
-        arm->setEndEffectorLink("tcp");
-        arm->setNamedTarget("pegar_obj");
-        if (!planAndExecute(arm, cycle_name + " return pegar_obj")) { return false; }
-
-        // PRE CONTAINER
-        arm->setStartStateToCurrentState();
-        arm->setEndEffectorLink("tcp");
-        arm->setNamedTarget("pre_container");
-        if (!planAndExecute(arm, cycle_name + " pre_container")) { return false; }
-
-        // CONTAINER
-        arm->setStartStateToCurrentState();
-        arm->setNamedTarget(container_pose);
-        if (!planAndExecute(arm, cycle_name + " " + container_pose)) { return false; }
-
-        // OPEN GRIPPER
-        gripper->setStartStateToCurrentState();
-        gripper->setNamedTarget("gripper_open");
-        if (!planAndExecute(gripper, cycle_name + " open gripper")) { return false; }
-
-        // RETURN TO PRE_CONTAINER
-        arm->setStartStateToCurrentState();
-        arm->setNamedTarget("pre_container");
-        if (!planAndExecute(arm, cycle_name + " return pre_container")) { return false; }
-
-        return true;
-    };
-
-    // First cycle: existing behavior
-    if (!run_pick_cycle("tag_M30_nut", "container1", "CYCLE1"))
-    {
-        return;
-    }
-
     // =====================================================
-    // RETURN TO PEGAR_OBJ (between cycles)
-    // =====================================================
-
-    arm->setStartStateToCurrentState();
-    arm->setEndEffectorLink("tcp");
-    arm->setNamedTarget("pegar_obj");
-    if (!planAndExecute(arm, "pegar_obj between cycles"))
-    {
-        return;
-    }
-
-    // =====================================================
-    // USER REQUESTED POST-CYCLE SEQUENCE
-    // open gripper -> pre_container -> container1 -> close gripper
-    // -> pre_container -> pegar_obj -> Mesa0 -> open gripper -> pegar_obj
+    // DIRECT CONTAINER PLACE SEQUENCE
+    // open gripper -> pre_container -> source_container -> close gripper
+    // -> pre_container -> pegar_obj -> place_target -> open gripper -> pegar_obj
     // =====================================================
 
     gripper->setStartStateToCurrentState();
@@ -656,8 +940,8 @@ void MTCTaskNode::doTask()
 
     arm->setStartStateToCurrentState();
     arm->setEndEffectorLink("tcp");
-    arm->setNamedTarget("container1");
-    if (!planAndExecute(arm, "custom container1"))
+    arm->setNamedTarget(source_container);
+    if (!planAndExecute(arm, "custom " + source_container))
     {
         return;
     }
@@ -685,10 +969,11 @@ void MTCTaskNode::doTask()
         return;
     }
 
-    arm->setStartStateToCurrentState();
-    arm->setEndEffectorLink("tcp");
-    arm->setNamedTarget("Mesa0");
-    if (!planAndExecute(arm, "custom Mesa0"))
+    if (!moveToPlaceTarget(
+            arm,
+            place_target,
+            container_place_z_offset,
+            "custom place"))
     {
         return;
     }
@@ -704,22 +989,6 @@ void MTCTaskNode::doTask()
     arm->setEndEffectorLink("tcp");
     arm->setNamedTarget("pegar_obj");
     if (!planAndExecute(arm, "custom pegar_obj final"))
-    {
-        return;
-    }
-
-    // FINALIZATION AFTER CYCLE 2: CLOSE GRIPPER AND GO HOME
-    gripper->setStartStateToCurrentState();
-    gripper->setNamedTarget("gripper_close");
-    if (!planAndExecute(gripper, "cycle2 final close gripper"))
-    {
-        return;
-    }
-
-    arm->setStartStateToCurrentState();
-    arm->setEndEffectorLink("tcp");
-    arm->setNamedTarget("home");
-    if (!planAndExecute(arm, "cycle2 final home"))
     {
         return;
     }

@@ -1,0 +1,25 @@
+actions:
+  - kind: pick
+    tag_frame: tag_F20_20_B
+  - kind: place
+    tag_frame: tag_F20_20_B
+    ws: WS_8
+    table_pose: ct16
+  - kind: pick
+    tag_frame: tag_F20_20_G
+  - kind: place
+    tag_frame: tag_F20_20_G
+    ws: WS_8
+    table_pose: ct10
+  - kind: pick
+    tag_frame: tag_S40_40_G
+  - kind: place
+    tag_frame: tag_S40_40_G
+    ws: WS_8
+    table_pose: ct10
+  - kind: pick
+    tag_frame: tag_M30_nut
+  - kind: place
+    tag_frame: tag_M30_nut
+    ws: WS_8
+    table_pose: ct16

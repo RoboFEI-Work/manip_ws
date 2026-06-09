@@ -163,7 +163,7 @@ int main(int argc, char ** argv)
   rclcpp::init(argc, argv);
 
   try {
-    const std::string input_yaml = (argc >= 2) ? argv[1] : "att1.yaml";
+    const std::string input_yaml = (argc >= 2) ? argv[1] : "btt1_actions.yaml";
     const std::string yaml_path = resolveActionsYamlPath(input_yaml);
 
     const YAML::Node actions_root = YAML::LoadFile(yaml_path);

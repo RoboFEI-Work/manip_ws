@@ -3,10 +3,26 @@
 
 #include <moveit/move_group_interface/move_group_interface.hpp>
 
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/exceptions.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+
+#include <chrono>
+#include <cctype>
 #include <cstdlib>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
+
+#if __has_include(<tf2_geometry_msgs/tf2_geometry_msgs.hpp>)
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#else
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#endif
 
 #include "mtc_tutorial/container_state_store.hpp"
 #include "my_robot_msgs/action/place_tag.hpp"
@@ -31,8 +47,16 @@ public:
         container_state_file_ = this->declare_parameter<std::string>(
             "container_state_file",
             default_container_state_file);
+        container_place_z_offset_ =
+            this->declare_parameter<double>("container_place_z_offset", 0.1);
         container_state_store_ =
             std::make_unique<mtc_tutorial::ContainerStateStore>(container_state_file_);
+        declarePlanningDefaults();
+
+        tf_buffer_ =
+            std::make_shared<tf2_ros::Buffer>(this->get_clock());
+        tf_listener_ =
+            std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
         action_server_ =
             rclcpp_action::create_server<PlaceTag>(
@@ -70,6 +94,157 @@ private:
         action_server_;
     std::string container_state_file_;
     std::unique_ptr<mtc_tutorial::ContainerStateStore> container_state_store_;
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    double container_place_z_offset_;
+
+    void declarePlanningDefaults()
+    {
+        if (!this->has_parameter("ompl.planning_plugins")) {
+            this->declare_parameter<std::vector<std::string>>(
+                "ompl.planning_plugins",
+                std::vector<std::string>{"ompl_interface/OMPLPlanner"});
+        }
+        if (!this->has_parameter("ompl.planning_plugin")) {
+            this->declare_parameter<std::string>(
+                "ompl.planning_plugin",
+                "ompl_interface/OMPLPlanner");
+        }
+        if (!this->has_parameter("ompl.request_adapters")) {
+            this->declare_parameter<std::vector<std::string>>(
+                "ompl.request_adapters",
+                std::vector<std::string>{
+                    "default_planning_request_adapters/ResolveConstraintFrames",
+                    "default_planning_request_adapters/ValidateWorkspaceBounds",
+                    "default_planning_request_adapters/CheckStartStateBounds",
+                    "default_planning_request_adapters/CheckStartStateCollision"});
+        }
+        if (!this->has_parameter("ompl.response_adapters")) {
+            this->declare_parameter<std::vector<std::string>>(
+                "ompl.response_adapters",
+                std::vector<std::string>{
+                    "default_planning_response_adapters/ValidateSolution",
+                    "default_planning_response_adapters/DisplayMotionPath"});
+        }
+        if (!this->has_parameter("ompl.start_state_max_bounds_error")) {
+            this->declare_parameter<double>("ompl.start_state_max_bounds_error", 0.1);
+        }
+
+        if (!this->has_parameter("robot_description_kinematics.arm.kinematics_solver")) {
+            this->declare_parameter<std::string>(
+                "robot_description_kinematics.arm.kinematics_solver",
+                "pick_ik/PickIkPlugin");
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.kinematics_solver_timeout")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.kinematics_solver_timeout",
+                0.2);
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.mode")) {
+            this->declare_parameter<std::string>(
+                "robot_description_kinematics.arm.mode",
+                "global");
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.position_scale")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.position_scale",
+                1.0);
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.rotation_scale")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.rotation_scale",
+                0.03);
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.position_threshold")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.position_threshold",
+                0.002);
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.orientation_threshold")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.orientation_threshold",
+                0.30);
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.cost_threshold")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.cost_threshold",
+                0.001);
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.minimal_displacement_weight")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.minimal_displacement_weight",
+                0.02);
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.gd_step_size")) {
+            this->declare_parameter<double>(
+                "robot_description_kinematics.arm.gd_step_size",
+                0.0008);
+        }
+
+        if (!this->has_parameter("arm.kinematics_solver")) {
+            this->declare_parameter<std::string>("arm.kinematics_solver", "pick_ik/PickIkPlugin");
+        }
+        if (!this->has_parameter("arm.kinematics_solver_timeout")) {
+            this->declare_parameter<double>("arm.kinematics_solver_timeout", 0.2);
+        }
+        if (!this->has_parameter("arm.mode")) {
+            this->declare_parameter<std::string>("arm.mode", "global");
+        }
+        if (!this->has_parameter("arm.position_scale")) {
+            this->declare_parameter<double>("arm.position_scale", 1.0);
+        }
+        if (!this->has_parameter("arm.rotation_scale")) {
+            this->declare_parameter<double>("arm.rotation_scale", 0.03);
+        }
+        if (!this->has_parameter("arm.position_threshold")) {
+            this->declare_parameter<double>("arm.position_threshold", 0.002);
+        }
+        if (!this->has_parameter("arm.orientation_threshold")) {
+            this->declare_parameter<double>("arm.orientation_threshold", 0.30);
+        }
+        if (!this->has_parameter("arm.cost_threshold")) {
+            this->declare_parameter<double>("arm.cost_threshold", 0.001);
+        }
+        if (!this->has_parameter("arm.minimal_displacement_weight")) {
+            this->declare_parameter<double>("arm.minimal_displacement_weight", 0.02);
+        }
+        if (!this->has_parameter("arm.gd_step_size")) {
+            this->declare_parameter<double>("arm.gd_step_size", 0.0008);
+        }
+
+        std::vector<std::string> planning_plugins;
+        if (!this->get_parameter("ompl.planning_plugins", planning_plugins) ||
+            planning_plugins.empty() || planning_plugins.front().empty()) {
+            this->set_parameter(
+                rclcpp::Parameter(
+                    "ompl.planning_plugins",
+                    std::vector<std::string>{"ompl_interface/OMPLPlanner"}));
+        }
+
+        std::string planning_plugin;
+        if (!this->get_parameter("ompl.planning_plugin", planning_plugin) ||
+            planning_plugin.empty()) {
+            this->set_parameter(
+                rclcpp::Parameter("ompl.planning_plugin", "ompl_interface/OMPLPlanner"));
+        }
+
+        std::string kinematics_solver;
+        if (!this->get_parameter(
+                "robot_description_kinematics.arm.kinematics_solver",
+                kinematics_solver) ||
+            kinematics_solver.empty()) {
+            this->set_parameter(
+                rclcpp::Parameter(
+                    "robot_description_kinematics.arm.kinematics_solver",
+                    "pick_ik/PickIkPlugin"));
+        }
+
+        if (!this->get_parameter("arm.kinematics_solver", kinematics_solver) ||
+            kinematics_solver.empty()) {
+            this->set_parameter(
+                rclcpp::Parameter("arm.kinematics_solver", "pick_ik/PickIkPlugin"));
+        }
+    }
 
     void publish_stage(
         const std::shared_ptr<GoalHandlePlaceTag> & goal_handle,
@@ -102,6 +277,199 @@ private:
         }
 
         return true;
+    }
+
+    static bool isContainerTarget(const std::string & target)
+    {
+        if (target.size() <= 2 || target[0] != 'c' || target[1] != 't') {
+            return false;
+        }
+
+        for (std::size_t i = 2; i < target.size(); ++i) {
+            if (!std::isdigit(static_cast<unsigned char>(target[i]))) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    geometry_msgs::msg::TransformStamped getTagTransform(
+        const std::string & reference_frame,
+        const std::string & tag_frame) const
+    {
+        return tf_buffer_->lookupTransform(
+            reference_frame,
+            tag_frame,
+            tf2::TimePointZero,
+            tf2::durationFromSec(0.5));
+    }
+
+    bool waitForTagTransform(
+        const std::string & reference_frame,
+        const std::string & tag_frame,
+        geometry_msgs::msg::TransformStamped & out_tf,
+        const std::chrono::milliseconds timeout,
+        const std::chrono::milliseconds retry_period,
+        const std::string & cycle_name) const
+    {
+        const auto start = std::chrono::steady_clock::now();
+        tf2::TransformException last_ex("unknown TF error");
+
+        while (std::chrono::steady_clock::now() - start < timeout) {
+            try {
+                out_tf = getTagTransform(reference_frame, tag_frame);
+                return true;
+            } catch (const tf2::TransformException & ex) {
+                last_ex = ex;
+            }
+
+            rclcpp::sleep_for(retry_period);
+        }
+
+        RCLCPP_ERROR_STREAM(
+            get_logger(),
+            "[" << cycle_name << "] Timed out waiting TF "
+                << reference_frame << " <- " << tag_frame
+                << " after " << timeout.count() << " ms. Last error: "
+                << last_ex.what());
+        return false;
+    }
+
+    bool moveToTarget(
+        const std::shared_ptr<MoveGroupInterface> & arm,
+        const geometry_msgs::msg::TransformStamped & tf,
+        const std::string & eef_link,
+        const std::string & label,
+        bool use_orientation_constraint)
+    {
+        arm->setStartStateToCurrentState();
+        arm->setEndEffectorLink(eef_link);
+
+        tf2::Quaternion tag_q(
+            tf.transform.rotation.x,
+            tf.transform.rotation.y,
+            tf.transform.rotation.z,
+            tf.transform.rotation.w);
+
+        double roll = 0.0;
+        double pitch = 0.0;
+        double yaw = 0.0;
+        tf2::Matrix3x3(tag_q).getRPY(roll, pitch, yaw);
+
+        geometry_msgs::msg::Pose target_pose;
+        target_pose.position.x = tf.transform.translation.x;
+        target_pose.position.y = tf.transform.translation.y;
+        target_pose.position.z = tf.transform.translation.z;
+
+        if (use_orientation_constraint) {
+            tf2::Quaternion desired_q;
+            desired_q.setRPY(0.0, M_PI, yaw);
+            desired_q.normalize();
+            target_pose.orientation = tf2::toMsg(desired_q);
+        } else {
+            target_pose.orientation = arm->getCurrentPose(eef_link).pose.orientation;
+        }
+
+        MoveGroupInterface::Plan plan;
+
+        arm->setGoalPositionTolerance(0.01);
+        arm->setGoalOrientationTolerance(use_orientation_constraint ? 0.35 : M_PI);
+        arm->clearPoseTargets();
+        arm->setPoseTarget(target_pose, eef_link);
+
+        bool success =
+            (arm->plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
+
+        if (!success) {
+            RCLCPP_WARN_STREAM(
+                get_logger(),
+                "Plan failed with setPoseTarget for " << label
+                    << ". Trying approximate IK.");
+
+            arm->clearPoseTargets();
+            arm->setApproximateJointValueTarget(target_pose, eef_link);
+            success =
+                (arm->plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
+        }
+
+        if (!success) {
+            RCLCPP_ERROR_STREAM(get_logger(), "Planning failed: " << label);
+            return false;
+        }
+
+        const auto exec_result = arm->execute(plan);
+        if (exec_result != moveit::core::MoveItErrorCode::SUCCESS) {
+            RCLCPP_ERROR_STREAM(get_logger(), "Execution failed: " << label);
+            return false;
+        }
+
+        return true;
+    }
+
+    bool moveToPlaceTarget(
+        const std::shared_ptr<MoveGroupInterface> & arm,
+        const std::string & table_pose,
+        const std::shared_ptr<GoalHandlePlaceTag> & goal_handle)
+    {
+        if (!isContainerTarget(table_pose)) {
+            arm->setStartStateToCurrentState();
+            arm->setEndEffectorLink("tcp");
+            arm->setNamedTarget(table_pose);
+            return planAndExecute(arm, "go " + table_pose);
+        }
+
+        publish_stage(goal_handle, "detecting_place_tag");
+
+        geometry_msgs::msg::TransformStamped target_tf;
+        if (!waitForTagTransform(
+                "base_link",
+                table_pose,
+                target_tf,
+                std::chrono::milliseconds(5000),
+                std::chrono::milliseconds(200),
+                "place detect " + table_pose)) {
+            return false;
+        }
+
+        publish_stage(goal_handle, "place_pre_approach");
+
+        constexpr double kTagXNearZero = 0.1;
+        const double tag_x = target_tf.transform.translation.x;
+
+        if (std::abs(tag_x) > kTagXNearZero) {
+            arm->setStartStateToCurrentState();
+            arm->setEndEffectorLink("tcp");
+
+            if (tag_x > 0.0) {
+                arm->setNamedTarget("tag_direita");
+                if (!planAndExecute(arm, "place go tag_direita")) {
+                    return false;
+                }
+            } else {
+                arm->setNamedTarget("tag_esquerda");
+                if (!planAndExecute(arm, "place go tag_esquerda")) {
+                    return false;
+                }
+            }
+        }
+
+        rclcpp::sleep_for(std::chrono::milliseconds(1000));
+
+        if (!waitForTagTransform(
+                "base_link",
+                table_pose,
+                target_tf,
+                std::chrono::milliseconds(3000),
+                std::chrono::milliseconds(200),
+                "place final " + table_pose)) {
+            return false;
+        }
+
+        target_tf.transform.translation.z += container_place_z_offset_;
+
+        publish_stage(goal_handle, "place_final_approach");
+        return moveToTarget(arm, target_tf, "tcp", "place above " + table_pose, true);
     }
 
     rclcpp_action::GoalResponse
@@ -270,10 +638,7 @@ private:
         }
 
         publish_stage(goal_handle, "going_table");
-        arm->setStartStateToCurrentState();
-        arm->setEndEffectorLink("tcp");
-        arm->setNamedTarget(table_pose);
-        if (!planAndExecute(arm, "go " + table_pose)) {
+        if (!moveToPlaceTarget(arm, table_pose, goal_handle)) {
             return false;
         }
 
