@@ -24,7 +24,7 @@ finish_state:
     obj_ids: []
     cont_ids: []
   WS_8:
-    obj_ids: [01, 02, 04, 0]
+    obj_ids: [01, 02, 04, 07]
     cont_ids: [10, 16]
     constraints:
       - O2,O4 must be inside 10 (BLUE)

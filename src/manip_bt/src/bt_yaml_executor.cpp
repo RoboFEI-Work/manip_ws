@@ -16,6 +16,54 @@
 namespace
 {
 
+class SimulatedGotoBT : public BT::SyncActionNode
+{
+public:
+  SimulatedGotoBT(const std::string & name, const BT::NodeConfiguration & config)
+  : BT::SyncActionNode(name, config)
+  {
+  }
+
+  static BT::PortsList providedPorts()
+  {
+    return {
+      BT::InputPort<std::string>("ws"),
+      BT::InputPort<std::string>("mesa"),
+    };
+  }
+
+  BT::NodeStatus tick() override
+  {
+    std::string ws;
+    std::string mesa;
+    getInput("ws", ws);
+    getInput("mesa", mesa);
+
+    if (ws.empty() && mesa.empty()) {
+      RCLCPP_INFO(rclcpp::get_logger("SimulatedGotoBT"), "Indo para navegacao");
+    } else if (ws.empty()) {
+      RCLCPP_INFO(
+        rclcpp::get_logger("SimulatedGotoBT"),
+        "Indo para navegacao: %s",
+        mesa.c_str());
+    } else if (mesa.empty()) {
+      RCLCPP_INFO(
+        rclcpp::get_logger("SimulatedGotoBT"),
+        "Indo para navegacao: %s",
+        ws.c_str());
+    } else {
+      RCLCPP_INFO(
+        rclcpp::get_logger("SimulatedGotoBT"),
+        "Indo para navegacao: %s (%s)",
+        mesa.c_str(),
+        ws.c_str());
+    }
+
+    rclcpp::sleep_for(std::chrono::seconds(5));
+    return BT::NodeStatus::SUCCESS;
+  }
+};
+
 std::string resolveActionsYamlPath(const std::string & input_path)
 {
   namespace fs = std::filesystem;
@@ -119,6 +167,33 @@ std::string buildTreeXmlFromActions(
   for (std::size_t i = 0; i < actions.size(); ++i) {
     const YAML::Node action = actions[i];
     const std::string kind = action["kind"].as<std::string>("");
+    if (kind == "home") {
+      const std::string pose_name = action["pose_name"].as<std::string>("home");
+      const std::string pose_name_key = actionBlackboardKey(i, "pose_name");
+      setStringOnBlackboard(blackboard, i, "pose_name", pose_name);
+
+      xml << "      <GoToNamedPose pose_name=\"" << escapeXmlAttr(blackboardPort(pose_name_key))
+          << "\"/>\n";
+      continue;
+    }
+
+    if (kind == "goto") {
+      const std::string ws = action["ws"].as<std::string>("");
+      const std::string mesa = action["mesa"].as<std::string>("");
+      if (ws.empty() && mesa.empty()) {
+        throw std::runtime_error("actions[" + std::to_string(i) + "] goto missing ws/mesa");
+      }
+
+      const std::string ws_key = actionBlackboardKey(i, "ws");
+      const std::string mesa_key = actionBlackboardKey(i, "mesa");
+      setStringOnBlackboard(blackboard, i, "ws", ws);
+      setStringOnBlackboard(blackboard, i, "mesa", mesa);
+
+      xml << "      <SimulatedGoto ws=\"" << escapeXmlAttr(blackboardPort(ws_key))
+          << "\" mesa=\"" << escapeXmlAttr(blackboardPort(mesa_key)) << "\"/>\n";
+      continue;
+    }
+
     if (kind == "pick") {
       const std::string tag_frame = readRequiredString(action, i, "tag_frame");
       const std::string tag_frame_key = actionBlackboardKey(i, "tag_frame");
@@ -163,7 +238,7 @@ int main(int argc, char ** argv)
   rclcpp::init(argc, argv);
 
   try {
-    const std::string input_yaml = (argc >= 2) ? argv[1] : "btt1_actions.yaml";
+    const std::string input_yaml = (argc >= 2) ? argv[1] : "bmtt.yaml";
     const std::string yaml_path = resolveActionsYamlPath(input_yaml);
 
     const YAML::Node actions_root = YAML::LoadFile(yaml_path);
@@ -174,6 +249,7 @@ int main(int argc, char ** argv)
     factory.registerNodeType<manip_bt::GoToNamedPoseBT>("GoToNamedPose");
     factory.registerNodeType<manip_bt::PickTagBT>("PickTag");
     factory.registerNodeType<manip_bt::PlaceTagBT>("PlaceTag");
+    factory.registerNodeType<SimulatedGotoBT>("SimulatedGoto");
 
     auto tree = factory.createTreeFromText(tree_xml, blackboard);
 

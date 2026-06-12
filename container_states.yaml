@@ -1,7 +1,7 @@
 containers:
   container1:
     occupied: true
-    tag_frame: tag_F20_20_B
+    tag_frame: tag_M30_nut
     status: filled
   container2:
     occupied: false

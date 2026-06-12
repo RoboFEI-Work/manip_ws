@@ -33,6 +33,10 @@ add_executable(competition_yaml_translator
   src/competition_yaml_translator.cpp
 )
 
+add_executable(task_planner
+  src/task_planner.cpp
+)
+
 target_include_directories(manip_bt_executor PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
@@ -79,6 +83,16 @@ ament_target_dependencies(
 )
 
 install(TARGETS competition_yaml_translator
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+target_link_libraries(task_planner yaml-cpp)
+ament_target_dependencies(
+  task_planner
+  ament_index_cpp
+)
+
+install(TARGETS task_planner
   DESTINATION lib/${PROJECT_NAME}
 )
 
