@@ -615,10 +615,15 @@ private:
             return false;
         }
 
+        arm->setMaxVelocityScalingFactor(1.0);
+        arm->setMaxAccelerationScalingFactor(0.2);
+        
         publish_stage(goal_handle, "final_approach");
         if (!moveToTarget(arm, tag_tf, "tcp", cycle_name + " tcp final", true)) {
             return false;
         }
+        arm->setMaxVelocityScalingFactor(1.2);
+        arm->setMaxAccelerationScalingFactor(1.0);
 
         publish_stage(goal_handle, "closing_gripper");
         gripper->setStartStateToCurrentState();
@@ -690,8 +695,8 @@ private:
         arm->setPoseReferenceFrame("base_link");
         arm->setPlanningTime(15.0);
         arm->setNumPlanningAttempts(20);
-        arm->setMaxVelocityScalingFactor(1.0);
-        arm->setMaxAccelerationScalingFactor(0.2);
+        arm->setMaxVelocityScalingFactor(1.2);
+        arm->setMaxAccelerationScalingFactor(1.0);
         gripper->setMaxVelocityScalingFactor(1.0);
         gripper->setMaxAccelerationScalingFactor(1.0);
 

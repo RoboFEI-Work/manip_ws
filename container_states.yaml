@@ -1,13 +1,13 @@
 containers:
   container1:
     occupied: true
-    tag_frame: tag_M30_nut
+    tag_frame: tag_F20_20_B
     status: filled
   container2:
-    occupied: false
-    tag_frame: ""
-    status: empty
+    occupied: true
+    tag_frame: tag_F20_20_G
+    status: filled
   container3:
-    occupied: false
-    tag_frame: ""
-    status: empty
+    occupied: true
+    tag_frame: tag_S40_40_G
+    status: filled
