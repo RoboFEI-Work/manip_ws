@@ -17,17 +17,17 @@ actions:
     ws: WS_8
     mesa: Mesa15
   - kind: place
-    tag_frame: tag_F20_20_B
-    ws: WS_8
-    table_pose: Mesa0
-  - kind: place
     tag_frame: tag_F20_20_G
     ws: WS_8
-    table_pose: Mesa0.1
+    table_pose: ct14
   - kind: place
     tag_frame: tag_S40_40_G
     ws: WS_8
-    table_pose: Mesa0.2
+    table_pose: tag_F20_20_G
+  - kind: place
+    tag_frame: tag_F20_20_B
+    ws: WS_8
+    table_pose: tag_S40_40_G
   - kind: home
     pose_name: home
   

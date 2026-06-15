@@ -212,7 +212,7 @@ Schema esperado do YAML:
 - `actions[].kind`: `home`, `goto`, `pick` ou `place`
 - `actions[].mesa`: mesa/named target, obrigatoria em `goto`
 - `actions[].tag_frame`: frame da tag usado no pick/place
-- `actions[].table_pose`: pose de destino, obrigatoria em `place`; pode ser uma mesa (`Mesa15`) ou uma pose de container (`ct10`)
+- `actions[].table_pose`: pose de destino, obrigatoria em `place`; pode ser uma mesa (`Mesa15`), uma pose de container (`ct10`) ou um frame de tag (`tag_M30_nut`)
 - `actions[].ws`: workspace de destino, opcional em `place`
 
 ### Traduzir YAML de competicao para lista de acoes

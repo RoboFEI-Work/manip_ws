@@ -294,6 +294,16 @@ private:
         return true;
     }
 
+    static bool isTagTarget(const std::string & target)
+    {
+        return target.rfind("tag_", 0) == 0;
+    }
+
+    static bool isTfPlaceTarget(const std::string & target)
+    {
+        return isContainerTarget(target) || isTagTarget(target);
+    }
+
     geometry_msgs::msg::TransformStamped getTagTransform(
         const std::string & reference_frame,
         const std::string & tag_frame) const
@@ -412,7 +422,7 @@ private:
         const std::string & table_pose,
         const std::shared_ptr<GoalHandlePlaceTag> & goal_handle)
     {
-        if (!isContainerTarget(table_pose)) {
+        if (!isTfPlaceTarget(table_pose)) {
             arm->setStartStateToCurrentState();
             arm->setEndEffectorLink("tcp");
             arm->setNamedTarget(table_pose);
