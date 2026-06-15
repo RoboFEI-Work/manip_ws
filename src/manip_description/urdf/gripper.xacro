@@ -41,7 +41,7 @@
 
     </link>
 
-    <joint name="joint6" type="revolute">
+    <joint name="manip_joint6" type="revolute">
     <parent link="gripper_base_link"/>
     <child link="finger_left"/>
     <origin xyz="-0.025325 0 0.006"/>
@@ -74,7 +74,7 @@
 
     </link>
 
-    <joint name="joint7" type="revolute">
+    <joint name="manip_joint7" type="revolute">
     <parent link="gripper_base_link"/>
     <child link="finger_right"/>
     <origin xyz="0.025325 0 0.006"/>

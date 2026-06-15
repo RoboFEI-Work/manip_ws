@@ -22,7 +22,7 @@ GoToNamedPoseBT::GoToNamedPoseBT(
   arm_->setPlanningTime(15.0);
   arm_->setNumPlanningAttempts(20);
   arm_->setMaxVelocityScalingFactor(1.0);
-  arm_->setMaxAccelerationScalingFactor(0.2);
+  arm_->setMaxAccelerationScalingFactor(1.0);
 }
 
 BT::PortsList GoToNamedPoseBT::providedPorts()

@@ -538,7 +538,7 @@ private:
         arm->setPlanningTime(15.0);
         arm->setNumPlanningAttempts(20);
         arm->setMaxVelocityScalingFactor(1.0);
-        arm->setMaxAccelerationScalingFactor(0.2);
+        arm->setMaxAccelerationScalingFactor(1.0);
         gripper->setMaxVelocityScalingFactor(1.0);
         gripper->setMaxAccelerationScalingFactor(1.0);
 
@@ -637,10 +637,15 @@ private:
             return false;
         }
 
+
+        arm->setMaxAccelerationScalingFactor(0.2);
+        
         publish_stage(goal_handle, "going_table");
         if (!moveToPlaceTarget(arm, table_pose, goal_handle)) {
             return false;
         }
+        arm->setMaxAccelerationScalingFactor(1.0);
+        
 
         publish_stage(goal_handle, "opening_gripper_final");
         gripper->setStartStateToCurrentState();

@@ -308,7 +308,7 @@ Voce pode publicar como `open_gripper` ou `/open_gripper` (idem para os demais),
 ### Formato esperado de cada comando
 
 - `open_gripper`: `true` abre, `false` fecha.
-- `go_to_joint_target`: vetor com exatamente 5 valores, na ordem das juntas do grupo `arm` (`joint1` a `joint5`).
+- `go_to_joint_target`: vetor com exatamente 5 valores, na ordem das juntas do grupo `arm` (`manip_joint1` a `manip_joint5`).
 - `go_to_pose_target`: vetor com exatamente 6 valores na ordem `x, y, z, roll, yaw, pitch` (frame `base_link`).
 - `go_to_named_target`: string com nome de estado existente no SRDF.
 
@@ -378,8 +378,8 @@ Para o grupo `gripper`:
 
 Controladores `ros2_control` configurados:
 
-- `arm_controller` (juntas `joint1` a `joint5`)
-- `gripper_controller` (juntas `joint6` e `joint7`)
+- `arm_controller` (juntas `manip_joint1` a `manip_joint5`)
+- `gripper_controller` (juntas `manip_joint6` e `manip_joint7`)
 - `joint_state_broadcaster`
 
 Grupos MoveIt usados pelo commander:
@@ -406,13 +406,13 @@ O pacote `manip_hardware` implementa a interface `ros2_control` para 7 motores D
 
 | Joint   | Motor ID | Funcao         |
 |---------|----------|----------------|
-| joint1  | 1        | Braco          |
-| joint2  | 2        | Braco          |
-| joint3  | 3        | Braco          |
-| joint4  | 4        | Braco          |
-| joint5  | 5        | Braco          |
-| joint6  | 6        | Garra          |
-| joint7  | 7        | Garra          |
+| manip_joint1  | 1        | Braco          |
+| manip_joint2  | 2        | Braco          |
+| manip_joint3  | 3        | Braco          |
+| manip_joint4  | 4        | Braco          |
+| manip_joint5  | 5        | Braco          |
+| manip_joint6  | 6        | Garra          |
+| manip_joint7  | 7        | Garra          |
 
 Os IDs e a porta serial sao configurados no URDF/Xacro (`manip.ros2_control.xacro`).
 

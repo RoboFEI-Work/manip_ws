@@ -19,31 +19,15 @@ actions:
   - kind: place
     tag_frame: tag_F20_20_B
     ws: WS_8
-    table_pose: Mesa10.1
+    table_pose: Mesa0
   - kind: place
     tag_frame: tag_F20_20_G
     ws: WS_8
-    table_pose: Mesa10.2
+    table_pose: Mesa0.1
   - kind: place
     tag_frame: tag_S40_40_G
     ws: WS_8
-    table_pose: Mesa10
+    table_pose: Mesa0.2
   - kind: home
     pose_name: home
-  - kind: goto
-    ws: WS_1
-    mesa: Mesa0
-  - kind: pick
-    tag_frame: tag_M30_nut
-    ws: WS_1
-  - kind: home
-    pose_name: home
-  - kind: goto
-    ws: WS_8
-    mesa: Mesa15
-  - kind: place
-    tag_frame: tag_M30_nut
-    ws: WS_8
-    table_pose: Mesa10
-  - kind: home
-    pose_name: home
+  

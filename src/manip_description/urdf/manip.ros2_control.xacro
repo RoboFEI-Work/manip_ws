@@ -11,53 +11,53 @@
             </xacro:if>
             <xacro:unless value="$(arg use_mock_components)">
                 <plugin>arm_hardware/ArmHardwareInterface</plugin>
-                <param name="joint1_motor_id">1</param>
-                <param name="joint2_motor_id">2</param>
-                <param name="joint3_motor_id">3</param>
-                <param name="joint4_motor_id">4</param>
-                <param name="joint5_motor_id">5</param>
-                <param name="joint6_motor_id">6</param>
-                <param name="joint7_motor_id">7</param>
+                <param name="manip_joint1_motor_id">1</param>
+                <param name="manip_joint2_motor_id">2</param>
+                <param name="manip_joint3_motor_id">3</param>
+                <param name="manip_joint4_motor_id">4</param>
+                <param name="manip_joint5_motor_id">5</param>
+                <param name="manip_joint6_motor_id">6</param>
+                <param name="manip_joint7_motor_id">7</param>
                 <param name="dynamixel_port">/dev/ttyUSB0</param>
             </xacro:unless>
         </hardware>
-        <joint name="joint1">
+        <joint name="manip_joint1">
             <command_interface name="position"/>
             <state_interface name="position">
                 <param name="initial_value">0.0</param>
             </state_interface>
         </joint>
-        <joint name="joint2">
+        <joint name="manip_joint2">
             <command_interface name="position"/>
             <state_interface name="position">
                 <param name="initial_value">0.0</param>
             </state_interface>
         </joint>
-        <joint name="joint3">
+        <joint name="manip_joint3">
             <command_interface name="position"/>
             <state_interface name="position">
                 <param name="initial_value">0.0</param>
             </state_interface>
         </joint>
-        <joint name="joint4">
+        <joint name="manip_joint4">
             <command_interface name="position"/>
             <state_interface name="position">
                 <param name="initial_value">0.0</param>
             </state_interface>
         </joint>
-        <joint name="joint5">
+        <joint name="manip_joint5">
             <command_interface name="position"/>
             <state_interface name="position">
                 <param name="initial_value">0.0</param>
             </state_interface>
         </joint>
-        <joint name="joint6">
+        <joint name="manip_joint6">
             <command_interface name="position"/>
             <state_interface name="position">
                 <param name="initial_value">0.0</param>
             </state_interface>
         </joint>
-        <joint name="joint7">
+        <joint name="manip_joint7">
             <command_interface name="position"/>
             <state_interface name="position">
                 <param name="initial_value">0.0</param>
