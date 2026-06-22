@@ -10,36 +10,36 @@
   <link name="base_link">
     <visual>
       <geometry>
-        <mesh filename="package://manip_description/meshes/Base.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://manip_description/meshes/base_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin xyz="0 0 0" rpy="1.57 0 0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
     </visual>
 
     <collision>
       <geometry>
-        <mesh filename="package://manip_description/meshes/Base.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://manip_description/meshes/base_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin xyz="0 0 0" rpy="1.57 0 0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
     </collision>
 
     <inertial>
       <mass value="0.05"/>
-      <origin xyz="0 0 0" rpy="1.57 0 0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <inertia ixx="1e-05" ixy="0" ixz="0"
                iyy="1e-05" iyz="0"
                izz="1e-05"/>
     </inertial>
   </link>
 
-  <!-- ================= LINK1 ================= -->
+  <!-- ================= LINK1 - FOGUETE ================= -->
 
   <link name="link1">
 
     <visual>
       <geometry>
-        <mesh filename="package://manip_description/meshes/Foguete.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://manip_description/meshes/link1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin xyz="0 0 0.0" rpy="1.57 0 1.57"/>
+      <origin xyz="0 0 0.0" rpy="0 0 0"/>
       <material name="red">
         <color rgba="1 0 0 1"/>
       </material>
@@ -47,9 +47,9 @@
 
     <collision>
       <geometry>
-        <mesh filename="package://manip_description/meshes/Foguete.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://manip_description/meshes/link1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin xyz="0 0 0.0" rpy="1.57 0 1.57"/>
+      <origin xyz="0 0 0.0" rpy="0 0 0"/>
     </collision>
 
     <inertial>
@@ -62,15 +62,15 @@
 
   </link>
 
-  <!-- ================= LINK2 ================= -->
+  <!-- ================= LINK2 - (numero 01)================= -->
 
   <link name="link2">
 
     <visual>
       <geometry>
-        <mesh filename="package://manip_description/meshes/Link1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://manip_description/meshes/link2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin xyz="0.001 0 -0.012" rpy="1.57 0 3.14"/>
+      <origin xyz="0 0 -0.09775" rpy="0 0 0"/>
       <material name="green">
         <color rgba="0 1 0 1"/>
       </material>
@@ -78,14 +78,14 @@
 
     <collision>
       <geometry>
-        <mesh filename="package://manip_description/meshes/Link1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://manip_description/meshes/link2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin xyz="0.001 0 -0.012" rpy="1.57 0 3.14"/>
+      <origin xyz="0 0 -0.09775" rpy="0 0 0"/>
     </collision>
 
     <inertial>
       <mass value="0.4"/>
-      <origin xyz="0.001 0 -0.012" rpy="1.57 0 3.14"/>
+      <origin xyz="0 0 -0.09775" rpy="0 0 0"/>
       <inertia ixx="0.0004" ixy="0" ixz="0"
                iyy="0.0004" iyz="0"
                izz="0.00008"/>
@@ -99,9 +99,9 @@
 
     <visual>
       <geometry>
-        <mesh filename="package://manip_description/meshes/Link1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://manip_description/meshes/link3.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin xyz="0.001 0 -0.011" rpy="1.57 0 3.14"/>
+      <origin xyz="0 0 -0.28275" rpy="0 0 0"/>
       <material name="blue">
         <color rgba="0 0 1 1"/>
       </material>
@@ -109,14 +109,14 @@
 
     <collision>
       <geometry>
-        <mesh filename="package://manip_description/meshes/Link1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://manip_description/meshes/link3.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin xyz="0.001 0 -0.0011" rpy="1.57 0 3.14"/>
+      <origin xyz="0 0 -0.28275" rpy="0 0 0"/>
     </collision>
 
     <inertial>
       <mass value="0.4"/>
-      <origin xyz="0 0 0"/>
+      <origin xyz="0 0 -0.28275" rpy="0 0 0"/>
       <inertia ixx="0.0004" ixy="0" ixz="0"
                iyy="0.0004" iyz="0"
                izz="0.00008"/>
@@ -130,24 +130,24 @@
 
     <visual>
       <geometry>
-        <mesh filename="package://manip_description/meshes/Link3.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://manip_description/meshes/link4.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin xyz="0.042 0 0.020" rpy="1.57 0 1.57"/>
+      <origin xyz="0 0 -0.48775" rpy="0 0 0"/>
       <material name="yellow">
         <color rgba="1 1 0 1"/>
       </material>
-    </visual>
+    </visual>link5
 
     <collision>
       <geometry>
-        <mesh filename="package://manip_description/meshes/Link3.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://manip_description/meshes/link4.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin xyz="0.042 0 0.020" rpy="1.57 0 1.57"/>
+      <origin xyz="0 0 -0.48775" rpy="0 0 0"/>
     </collision>
 
     <inertial>
       <mass value="0.3"/>
-      <origin xyz="0.042 0 0.020" rpy="1.57 0 1.57"/>
+      <origin xyz="0 0 -0.48775" rpy="0 0 0"/>
       <inertia ixx="0.0003" ixy="0" ixz="0"
                iyy="0.0003" iyz="0"
                izz="0.00006"/>
@@ -161,9 +161,9 @@
 
     <visual>
       <geometry>
-        <mesh filename="package://manip_description/meshes/Garra430_teste.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://manip_description/meshes/link5.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin xyz="0.0005 0 -0.004 " rpy="0.0 0 3.14"/>
+      <origin xyz="0 0 -0.5659" rpy="0.0 0 0"/>
       <material name="cyan">
         <color rgba="0 1 1 1"/>
       </material>
@@ -171,14 +171,14 @@
 
     <collision>
       <geometry>
-        <mesh filename="package://manip_description/meshes/Garra430_teste.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://manip_description/meshes/link5.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin xyz="0.0005 0 -0.004" rpy="0.0 0 3.14"/>
+      <origin xyz="0 0 -0.5659" rpy="0.0 0 0"/>
     </collision>
 
     <inertial>
       <mass value="0.15"/>
-      <origin xyz="0.0005 0 -0.004" rpy="0.0 0 3.14"/>
+      <origin xyz="0 0 -0.5659" rpy="0.0 0 0"/>
       <inertia ixx="7.9e-05" ixy="0" ixz="0"
                iyy="1.9e-04" iyz="0"
                izz="2.68e-04"/>
@@ -197,7 +197,7 @@
       Ajuste da pose da câmera em relação ao flange
       -->
 
-      <origin xyz="0 -0.055 0.009"
+      <origin xyz="0 -0.055 0.0125"
               rpy="0 -1.57079632679 -1.57079632679"/>
 
   </xacro:sensor_d455>
@@ -215,7 +215,7 @@
   <joint name="manip_joint2" type="revolute">
     <parent link="link1"/>
     <child link="link2"/>
-    <origin xyz="0 0 0.099"/>
+    <origin xyz="0 0 0.09775"/>
     <axis xyz="0 1 0"/>
     <limit lower="-1.8" upper="1.8"
            effort="10" velocity="3"/>
@@ -224,7 +224,7 @@
   <joint name="manip_joint3" type="revolute">
     <parent link="link2"/>
     <child link="link3"/>
-    <origin xyz="0 0 0.184"/>
+    <origin xyz="0 0 0.185"/>
     <axis xyz="0 1 0"/>
     <limit lower="-2.6" upper="2.6"
            effort="10" velocity="1"/>
@@ -233,7 +233,7 @@
   <joint name="manip_joint4" type="revolute">
     <parent link="link3"/>
     <child link="link4"/>
-    <origin xyz="0 0 0.185"/>
+    <origin xyz="0 0 0.205"/>
     <axis xyz="0 1 0"/>
     <limit lower="-2.2" upper="2.2"
            effort="10" velocity="1"/>
@@ -242,7 +242,7 @@
   <joint name="manip_joint5" type="revolute">
     <parent link="link4"/>
     <child link="link5"/>
-    <origin xyz="0.0013 0 0.08"/>
+    <origin xyz="0 0 0.07815"/>
     <axis xyz="0 0 1"/>
     <limit lower="-3.14" upper="3.14"
            effort="10" velocity="1"/>
@@ -263,7 +263,7 @@
   <joint name="tcp_fixed" type="fixed">
     <parent link="link5"/>
     <child link="tcp"/>
-    <origin xyz="0 -0.001 0.16" rpy="0 0 0"/>
+    <origin xyz="0 0 0.13" rpy="0 0 0"/>
   </joint>
 
   <!-- ==================== TCP 2 ==================-->
@@ -281,7 +281,7 @@
   <joint name="tcp2_fixed" type="fixed">
     <parent link="link5"/>
     <child link="tcp2"/>
-    <origin xyz="0 -0.001 0.3" rpy="0 0 0"/>
+    <origin xyz="0 0 0.3" rpy="0 0 0"/>
   </joint>
 
 </robot>
