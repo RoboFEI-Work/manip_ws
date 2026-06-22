@@ -23,7 +23,10 @@ Este workspace possui 8 pacotes principais:
 - `src/manip_description/launch/display.launch.xml`: visualizacao rapida da descricao.
 - `src/manip_moveit_config/config/`: SRDF, joint limits, controladores e parametros MoveIt.
 - `src/manip_moveit_config/launch/`: launch files do MoveIt.
-- `src/manip_bringup/launch/manip_bringup.launch.xml`: bringup principal do sistema.
+- `src/manip_bringup/launch/manip_control.launch.xml`: bringup da Raspberry Pi para `ros2_control` e motores.
+- `src/manip_bringup/launch/manip_pc.launch.xml`: bringup do PC para camera, AprilTag, MoveIt, RViz e actions.
+- `src/manip_bringup/launch/manip_pc_test.launch.xml`: bringup de teste apenas no PC com hardware mock.
+- `src/manip_bringup/launch/manip_bringup.launch.xml`: launch antigo/generico, mantido por compatibilidade.
 - `src/manip_bringup/config/ros2_controllers.yaml`: controladores do `ros2_control`.
 - `src/manip_bt/behavior_tree_manip/`: arvores XML e YAMLs de exemplo para BT.
 - `src/manip_bt/src/bt_executor.cpp`: executa a arvore BT registrada no pacote.
@@ -41,7 +44,8 @@ Este workspace possui 8 pacotes principais:
 - Ubuntu Linux com ROS 2 instalado.
 - MoveIt 2 instalado no ambiente.
 - `rosdep` configurado.
-- `dynamixel_sdk` instalado.
+- `dynamixel_sdk` instalado na Raspberry Pi/maquina que controla os motores.
+- `realsense2_camera` e `realsense2_description` instalados no PC quando a camera estiver conectada nele.
 
 ## Setup e build
 
@@ -61,7 +65,7 @@ colcon build --packages-select manip_description manip_moveit_config manip_bring
 source install/setup.bash
 ```
 
-## Fluxos de execucao
+## Fluxos de execucao recomendados
 
 ### 1) Visualizar apenas o robo (URDF)
 
@@ -75,23 +79,103 @@ ros2 launch manip_description display.launch.xml
 ros2 launch manip_moveit_config demo.launch.py
 ```
 
-### 3) Subir bringup integrado (recomendado para testes)
+### 3) Robo real com Raspberry controlando motores
+
+Neste fluxo, a Raspberry Pi fica conectada aos Dynamixels e roda apenas o `ros2_control`. O PC fica com camera RealSense, AprilTag, MoveIt, RViz, `manip_commander` e os action servers de pick/place.
+
+Pacotes necessarios na Raspberry:
+
+- `manip_description`
+- `manip_hardware`
+- `manip_bringup`
+
+Na Raspberry:
+
+```bash
+cd ~/caramelo_hardware_ws
+rosdep install --from-paths src --ignore-src -r -y
+colcon build --packages-select manip_description manip_hardware manip_bringup
+source install/setup.bash
+ros2 launch manip_bringup manip_control.launch.xml
+```
+
+No PC:
+
+```bash
+cd ~/manip_ws
+source install/setup.bash
+ros2 launch manip_bringup manip_pc.launch.xml
+```
+
+O `manip_pc.launch.xml` sobe por padrao:
+
+- RealSense
+- AprilTag
+- MoveIt `move_group`
+- RViz
+- `/pick_tag`
+- `/place_tag`
+- `manip_commander`
+
+Ele nao sobe `ros2_control_node`, porque os controladores estao na Raspberry.
+
+Os dois computadores precisam estar no mesmo dominio ROS 2:
+
+```bash
+echo $ROS_DOMAIN_ID
+export ROS_DOMAIN_ID=0
+```
+
+Use o mesmo valor nos dois lados.
+
+### 4) Teste apenas no PC
+
+Para testar sem Raspberry e sem motores reais, use o launch de mock:
+
+```bash
+ros2 launch manip_bringup manip_pc_test.launch.xml
+```
+
+Esse launch sobe `ros2_control_node` local com `use_mock_components:=true`, alem de RViz, MoveIt, `manip_commander` e os action servers.
+
+Por padrao, ele nao sobe camera nem AprilTag:
+
+```bash
+ros2 launch manip_bringup manip_pc_test.launch.xml launch_realsense:=true launch_apriltag:=true
+```
+
+### 5) Launch antigo/generico
+
+O launch antigo continua disponivel:
 
 ```bash
 ros2 launch manip_bringup manip_bringup.launch.xml
 ```
 
-Esse launch sobe os componentes necessarios para comando do braco e garra via MoveIt.
+Ele e mantido por compatibilidade, mas para evitar conflito entre PC e Raspberry prefira:
 
-Por padrao, esse bringup tambem sobe os action servers de pick/place (`mtc_pick_action_node` e `mtc_place_action_node`).
+- `manip_control.launch.xml` na Raspberry.
+- `manip_pc.launch.xml` no PC com o robo real.
+- `manip_pc_test.launch.xml` para teste apenas no PC.
 
-Por padrao, ao subir o bringup com `launch_pick_action:=true`, o arquivo `~/manip_ws/container_states.yaml` e resetado para deixar todos os containers vazios. Para preservar o estado anterior dos containers:
+## Argumentos dos launches
 
-```bash
-ros2 launch manip_bringup manip_bringup.launch.xml reset_container_states:=false
-```
+### `manip_control.launch.xml` (Raspberry)
 
-Argumentos disponiveis no bringup:
+- `use_mock_components` (default: `false`)
+
+Esse launch sempre usa `use_realsense:=false` no Xacro, entao a Raspberry nao precisa do pacote `realsense2_description` para gerar o `robot_description`.
+
+### `manip_pc.launch.xml` (PC com robo real)
+
+- `launch_realsense` (default: `true`)
+- `launch_apriltag` (default: `true`)
+- `launch_pick_action` (default: `true`)
+- `launch_place_action` (default: `true`)
+- `reset_container_states` (default: `true`)
+- `apriltag_params_file` (default: `$(env HOME)/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml`)
+
+### `manip_pc_test.launch.xml` (teste local)
 
 - `use_mock_components` (default: `true`)
 - `launch_realsense` (default: `false`)
@@ -101,30 +185,20 @@ Argumentos disponiveis no bringup:
 - `reset_container_states` (default: `true`)
 - `apriltag_params_file` (default: `$(env HOME)/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml`)
 
-Para usar o hardware real (motores XM540), passe o argumento:
+Por padrao, ao subir o bringup com `launch_pick_action:=true`, o arquivo `~/manip_ws/container_states.yaml` e resetado para deixar todos os containers vazios. Para preservar o estado anterior dos containers:
 
 ```bash
-ros2 launch manip_bringup manip_bringup.launch.xml use_mock_components:=false
-```
-
-Para subir camera + detector AprilTag no mesmo bringup:
-
-```bash
-ros2 launch manip_bringup manip_bringup.launch.xml use_mock_components:=false\
-	launch_realsense:=true \
-	launch_apriltag:=true
+ros2 launch manip_bringup manip_pc.launch.xml reset_container_states:=false
 ```
 
 Se o arquivo de parametros da tag estiver em outro caminho:
 
 ```bash
-ros2 launch manip_bringup manip_bringup.launch.xml \
-	launch_realsense:=true \
-	launch_apriltag:=true \
+ros2 launch manip_bringup manip_pc.launch.xml \
 	apriltag_params_file:=/caminho/para/tags_36h11.yaml
 ```
 
-Observacao: o repositorio local pode nao conter os fontes de `apriltag_ros` e `realsense2_camera`; nesse caso, use os pacotes instalados no ROS 2.
+Observacao: o repositorio local pode nao conter os fontes de `realsense2_camera`; nesse caso, use o pacote instalado no ROS 2.
 
 ## Actions de pick/place por tag
 
@@ -137,7 +211,13 @@ Action definida em `my_robot_msgs/action/PickTag.action`:
 Enviar goal manualmente:
 
 ```bash
-ros2 action send_goal /pick_tag my_robot_msgs/action/PickTag "{tag_frame: tag_M30_nut}" --feedback
+ros2 action send_goal /pick_tag my_robot_msgs/action/PickTag "{tag_frame: 'tag_F20_20_B'}" --feedback
+```
+
+Antes de enviar o pick, confira se a tag esta no TF:
+
+```bash
+ros2 run tf2_ros tf2_echo base_link tag_F20_20_B
 ```
 
 Action definida em `my_robot_msgs/action/PlaceTag.action`:
@@ -149,7 +229,7 @@ Action definida em `my_robot_msgs/action/PlaceTag.action`:
 Enviar goal manualmente:
 
 ```bash
-ros2 action send_goal /place_tag my_robot_msgs/action/PlaceTag "{tag_frame: tag_M30_nut, table_pose: Mesa15}" --feedback
+ros2 action send_goal /place_tag my_robot_msgs/action/PlaceTag "{tag_frame: 'tag_F20_20_B', table_pose: 'Mesa15'}" --feedback
 ```
 
 ## Behavior Tree (`manip_bt`)
@@ -173,8 +253,10 @@ Nos BT customizados registrados no executor:
 
 ```bash
 source install/setup.bash
-ros2 launch manip_bringup manip_bringup.launch.xml launch_pick_action:=true launch_place_action:=true
+ros2 launch manip_bringup manip_pc.launch.xml launch_pick_action:=true launch_place_action:=true
 ```
+
+Para teste apenas no PC, use `manip_pc_test.launch.xml` no lugar de `manip_pc.launch.xml`.
 
 2. Em outro terminal, rode o executor:
 
@@ -275,7 +357,7 @@ ros2 run manip_bt task_planner <competition_yaml> <output_yaml> [apriltag_yaml] 
 
 O executavel de comando se chama `commmander` (com tres letras `m`).
 
-Atualmente, o `commmander` ja e iniciado dentro de `manip_bringup.launch.xml`.
+Atualmente, o `commmander` ja e iniciado dentro de `manip_pc.launch.xml` e `manip_pc_test.launch.xml`.
 
 ### Sequencia recomendada (2 terminais)
 
@@ -283,7 +365,7 @@ Terminal 1 (bringup):
 
 ```bash
 source install/setup.bash
-ros2 launch manip_bringup manip_bringup.launch.xml
+ros2 launch manip_bringup manip_pc.launch.xml
 ```
 
 Terminal 2 (publicar comandos):
@@ -450,6 +532,8 @@ ros2 topic echo /joint_states
 
 ## Deteccao de AprilTag e TF no RViz
 
+No fluxo normal com Raspberry, `manip_pc.launch.xml` ja sobe a RealSense e o detector AprilTag por padrao. Os comandos abaixo sao uteis para diagnostico ou para subir cada parte manualmente.
+
 ### Subir camera RealSense (D455)
 
 ```bash
@@ -555,7 +639,19 @@ Hardware real nao responde:
 - Verifique se os IDs dos motores batem com o configurado.
 - Confirme que o baudrate dos motores esta em 57600.
 
+Erro `package 'realsense2_description' not found` na Raspberry:
+
+- Use `ros2 launch manip_bringup manip_control.launch.xml`, que gera o Xacro com `use_realsense:=false`.
+- Alternativamente, instale apenas a descricao da RealSense: `sudo apt install ros-jazzy-realsense2-description`.
+
 ## Launch files disponiveis
+
+Em `manip_bringup/launch/`:
+
+- `manip_control.launch.xml`: Raspberry, controle real dos motores.
+- `manip_pc.launch.xml`: PC com camera, AprilTag, MoveIt, RViz e actions.
+- `manip_pc_test.launch.xml`: teste local no PC com hardware mock.
+- `manip_bringup.launch.xml`: launch antigo/generico mantido por compatibilidade.
 
 Em `manip_moveit_config/launch/`:
 

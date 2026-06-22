@@ -18,7 +18,7 @@
     <node pkg="robot_state_publisher" exec="robot_state_publisher" >
         <param
             name="robot_description"
-            value="$(command 'xacro $(var urdf_path) use_mock_components:=$(var use_mock_components) use_realsense:=$(var launch_realsense)')"/>
+            value="$(command 'xacro $(var urdf_path) use_mock_components:=$(var use_mock_components)')"/>
     </node>
 
     <node pkg="rviz2" exec="rviz2" output="screen" 
@@ -27,7 +27,7 @@
     <node pkg="controller_manager" exec="ros2_control_node" output="screen" >
           <param
             name="robot_description"
-                                    value="$(command 'xacro $(var urdf_path) use_mock_components:=$(var use_mock_components) use_realsense:=$(var launch_realsense)')"/>
+                                    value="$(command 'xacro $(var urdf_path) use_mock_components:=$(var use_mock_components)')"/>
           <param from="$(find-pkg-share manip_bringup)/config/ros2_controllers.yaml"/>
     </node>
 

@@ -3,7 +3,11 @@
 
   <!-- ================= REALSENSE INCLUDE ================= -->
 
-  <xacro:include filename="$(find realsense2_description)/urdf/_d455.urdf.xacro"/>
+  <xacro:arg name="use_realsense" default="true"/>
+
+  <xacro:if value="$(arg use_realsense)">
+    <xacro:include filename="$(find realsense2_description)/urdf/_d455.urdf.xacro"/>
+  </xacro:if>
 
   <!-- ================= BASE ================= -->
 
@@ -132,11 +136,11 @@
       <geometry>
         <mesh filename="package://manip_description/meshes/link4.stl" scale="0.001 0.001 0.001"/>
       </geometry>
-      <origin xyz="0 0 -0.48775" rpy="0 0 0"/>
+      <origin xyz="0 0 -0.48775" rpy="0 0 3.14"/>
       <material name="yellow">
         <color rgba="1 1 0 1"/>
       </material>
-    </visual>link5
+    </visual>
 
     <collision>
       <geometry>
@@ -188,19 +192,21 @@
 
   <!-- ================= REALSENSE D455 ================= -->
 
-  <xacro:sensor_d455
-      parent="link5"
-      name="camera"
-      use_nominal_extrinsics="true">
+  <xacro:if value="$(arg use_realsense)">
+    <xacro:sensor_d455
+        parent="link5"
+        name="camera"
+        use_nominal_extrinsics="true">
 
-      <!--
-      Ajuste da pose da câmera em relação ao flange
-      -->
+        <!--
+        Ajuste da pose da câmera em relação ao flange
+        -->
 
-      <origin xyz="0 -0.055 0.0125"
-              rpy="0 -1.57079632679 -1.57079632679"/>
+        <origin xyz="0 -0.055 0.0125"
+                rpy="0 -1.57079632679 -1.57079632679"/>
 
-  </xacro:sensor_d455>
+    </xacro:sensor_d455>
+  </xacro:if>
 
   <!-- ================= ARM JOINTS ================= -->
 
@@ -242,7 +248,7 @@
   <joint name="manip_joint5" type="revolute">
     <parent link="link4"/>
     <child link="link5"/>
-    <origin xyz="0 0 0.07815"/>
+    <origin xyz="-0.03 0 0.07815"/>
     <axis xyz="0 0 1"/>
     <limit lower="-3.14" upper="3.14"
            effort="10" velocity="1"/>
@@ -263,7 +269,7 @@
   <joint name="tcp_fixed" type="fixed">
     <parent link="link5"/>
     <child link="tcp"/>
-    <origin xyz="0 0 0.13" rpy="0 0 0"/>
+    <origin xyz="0 0 0.17" rpy="0 0 0"/>
   </joint>
 
   <!-- ==================== TCP 2 ==================-->
