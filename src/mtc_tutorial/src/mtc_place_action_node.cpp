@@ -10,10 +10,13 @@
 #include <tf2_ros/transform_listener.h>
 
 #include <chrono>
+#include <atomic>
 #include <cctype>
 #include <cstdlib>
 #include <cmath>
 #include <memory>
+#include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -25,6 +28,7 @@
 #endif
 
 #include "mtc_tutorial/container_state_store.hpp"
+#include "mtc_tutorial/manipulator_execution_lock.hpp"
 #include "my_robot_msgs/action/place_tag.hpp"
 
 class PlaceActionServer : public rclcpp::Node
@@ -43,12 +47,23 @@ public:
     PlaceActionServer()
         : Node("place_action_server")
     {
+        const auto lock_file = this->declare_parameter<std::string>(
+            "manipulator_lock_file",
+            "/tmp/manip_ws_action.lock");
+        execution_lock_ =
+            std::make_unique<mtc_tutorial::ManipulatorExecutionLock>(lock_file);
+        if (!execution_lock_->valid()) {
+            throw std::runtime_error(
+                "Failed to open manipulator lock file '" + lock_file + "': " +
+                execution_lock_->error());
+        }
+
         const auto default_container_state_file = getDefaultContainerStatePath();
         container_state_file_ = this->declare_parameter<std::string>(
             "container_state_file",
             default_container_state_file);
         container_place_z_offset_ =
-            this->declare_parameter<double>("container_place_z_offset", 0.1);
+            this->declare_parameter<double>("container_place_z_offset", 0.06);
         container_state_store_ =
             std::make_unique<mtc_tutorial::ContainerStateStore>(container_state_file_);
         declarePlanningDefaults();
@@ -97,6 +112,80 @@ private:
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
     double container_place_z_offset_;
+    std::unique_ptr<mtc_tutorial::ManipulatorExecutionLock> execution_lock_;
+    std::atomic_bool cancel_requested_{false};
+    std::mutex active_interfaces_mutex_;
+    std::shared_ptr<MoveGroupInterface> active_arm_;
+    std::shared_ptr<MoveGroupInterface> active_gripper_;
+
+    class ExecutionGuard
+    {
+    public:
+        explicit ExecutionGuard(PlaceActionServer & server)
+        : server_(server)
+        {
+        }
+
+        ~ExecutionGuard()
+        {
+            server_.clearActiveInterfaces();
+            server_.cancel_requested_.store(false);
+            server_.execution_lock_->release();
+        }
+
+    private:
+        PlaceActionServer & server_;
+    };
+
+    bool cancellationRequested() const
+    {
+        return cancel_requested_.load();
+    }
+
+    void setActiveInterfaces(
+        const std::shared_ptr<MoveGroupInterface> & arm,
+        const std::shared_ptr<MoveGroupInterface> & gripper)
+    {
+        std::lock_guard<std::mutex> lock(active_interfaces_mutex_);
+        active_arm_ = arm;
+        active_gripper_ = gripper;
+    }
+
+    void clearActiveInterfaces()
+    {
+        std::lock_guard<std::mutex> lock(active_interfaces_mutex_);
+        active_arm_.reset();
+        active_gripper_.reset();
+    }
+
+    void stopActiveMotion()
+    {
+        std::shared_ptr<MoveGroupInterface> arm;
+        std::shared_ptr<MoveGroupInterface> gripper;
+        {
+            std::lock_guard<std::mutex> lock(active_interfaces_mutex_);
+            arm = active_arm_;
+            gripper = active_gripper_;
+        }
+        if (arm) {
+            arm->stop();
+        }
+        if (gripper) {
+            gripper->stop();
+        }
+    }
+
+    bool sleepInterruptibly(const std::chrono::milliseconds duration)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + duration;
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (cancellationRequested()) {
+                return false;
+            }
+            rclcpp::sleep_for(std::chrono::milliseconds(50));
+        }
+        return true;
+    }
 
     void declarePlanningDefaults()
     {
@@ -260,6 +349,10 @@ private:
         const std::shared_ptr<MoveGroupInterface> & iface,
         const std::string & label)
     {
+        if (cancellationRequested()) {
+            return false;
+        }
+
         MoveGroupInterface::Plan plan;
 
         const bool success =
@@ -270,7 +363,14 @@ private:
             return false;
         }
 
+        if (cancellationRequested()) {
+            return false;
+        }
+
         const auto exec_result = iface->execute(plan);
+        if (cancellationRequested()) {
+            return false;
+        }
         if (exec_result != moveit::core::MoveItErrorCode::SUCCESS) {
             RCLCPP_ERROR_STREAM(get_logger(), "Execution failed: " << label);
             return false;
@@ -321,12 +421,19 @@ private:
         geometry_msgs::msg::TransformStamped & out_tf,
         const std::chrono::milliseconds timeout,
         const std::chrono::milliseconds retry_period,
-        const std::string & cycle_name) const
+        const std::string & cycle_name)
     {
         const auto start = std::chrono::steady_clock::now();
         tf2::TransformException last_ex("unknown TF error");
 
         while (std::chrono::steady_clock::now() - start < timeout) {
+            if (cancellationRequested()) {
+                RCLCPP_WARN(
+                    get_logger(),
+                    "[%s] canceled while waiting for TF",
+                    cycle_name.c_str());
+                return false;
+            }
             try {
                 out_tf = getTagTransform(reference_frame, tag_frame);
                 return true;
@@ -334,7 +441,9 @@ private:
                 last_ex = ex;
             }
 
-            rclcpp::sleep_for(retry_period);
+            if (!sleepInterruptibly(retry_period)) {
+                return false;
+            }
         }
 
         RCLCPP_ERROR_STREAM(
@@ -353,6 +462,10 @@ private:
         const std::string & label,
         bool use_orientation_constraint)
     {
+        if (cancellationRequested()) {
+            return false;
+        }
+
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink(eef_link);
 
@@ -383,8 +496,8 @@ private:
 
         MoveGroupInterface::Plan plan;
 
-        arm->setGoalPositionTolerance(0.01);
-        arm->setGoalOrientationTolerance(use_orientation_constraint ? 0.35 : M_PI);
+        arm->setGoalPositionTolerance(0.005);
+        arm->setGoalOrientationTolerance(use_orientation_constraint ? 0.15 : M_PI);
         arm->clearPoseTargets();
         arm->setPoseTarget(target_pose, eef_link);
 
@@ -408,7 +521,14 @@ private:
             return false;
         }
 
+        if (cancellationRequested()) {
+            return false;
+        }
+
         const auto exec_result = arm->execute(plan);
+        if (cancellationRequested()) {
+            return false;
+        }
         if (exec_result != moveit::core::MoveItErrorCode::SUCCESS) {
             RCLCPP_ERROR_STREAM(get_logger(), "Execution failed: " << label);
             return false;
@@ -464,7 +584,9 @@ private:
             }
         }
 
-        rclcpp::sleep_for(std::chrono::milliseconds(1000));
+        if (!sleepInterruptibly(std::chrono::milliseconds(1000))) {
+            return false;
+        }
 
         if (!waitForTagTransform(
                 "base_link",
@@ -487,6 +609,22 @@ private:
         const rclcpp_action::GoalUUID&,
         std::shared_ptr<const PlaceTag::Goal> goal)
     {
+        if (goal->tag_frame.empty() || goal->table_pose.empty()) {
+            RCLCPP_WARN(
+                get_logger(),
+                "Rejecting PLACE goal: tag_frame and table_pose are required");
+            return rclcpp_action::GoalResponse::REJECT;
+        }
+
+        if (!execution_lock_->tryAcquire()) {
+            RCLCPP_WARN(
+                get_logger(),
+                "Rejecting PLACE for '%s': manipulator is busy",
+                goal->tag_frame.c_str());
+            return rclcpp_action::GoalResponse::REJECT;
+        }
+
+        cancel_requested_.store(false);
         RCLCPP_INFO(
             get_logger(),
             "Received place goal tag=%s table=%s",
@@ -500,10 +638,9 @@ private:
     handle_cancel(
         const std::shared_ptr<GoalHandlePlaceTag>)
     {
-        RCLCPP_INFO(
-            get_logger(),
-            "Goal canceled");
-
+        RCLCPP_WARN(get_logger(), "PLACE cancellation requested");
+        cancel_requested_.store(true);
+        stopActiveMotion();
         return rclcpp_action::CancelResponse::ACCEPT;
     }
 
@@ -522,13 +659,33 @@ private:
     void execute(
         const std::shared_ptr<GoalHandlePlaceTag> goal_handle)
     {
+        ExecutionGuard execution_guard(*this);
         const auto goal = goal_handle->get_goal();
 
         auto result =
             std::make_shared<PlaceTag::Result>();
 
+        const auto finish_failure =
+            [this, &goal_handle, &result](const std::string & message)
+            {
+                result->success = false;
+                if (cancellationRequested() || goal_handle->is_canceling()) {
+                    result->message = "Place canceled: " + message;
+                    goal_handle->canceled(result);
+                } else {
+                    result->message = message;
+                    goal_handle->abort(result);
+                }
+            };
+
+        if (cancellationRequested() || goal_handle->is_canceling()) {
+            finish_failure("canceled before execution started");
+            return;
+        }
+
         auto arm = std::make_shared<MoveGroupInterface>(shared_from_this(), "arm");
         auto gripper = std::make_shared<MoveGroupInterface>(shared_from_this(), "gripper");
+        setActiveInterfaces(arm, gripper);
 
         std::string container_pose;
         std::string lookup_error;
@@ -540,7 +697,7 @@ private:
             result->success = false;
             result->message = "Place failed: could not resolve container for tag '" +
                 goal->tag_frame + "' from yaml: " + lookup_error;
-            goal_handle->abort(result);
+            finish_failure(result->message);
             return;
         }
 
@@ -559,6 +716,11 @@ private:
                 container_pose,
                 goal->table_pose,
                 goal_handle);
+
+        if (cancellationRequested() || goal_handle->is_canceling()) {
+            finish_failure("canceled during place cycle");
+            return;
+        }
 
         bool state_write_success = true;
         std::string state_write_error;
@@ -590,7 +752,7 @@ private:
         }
         else
         {
-            goal_handle->abort(result);
+            finish_failure(result->message);
         }
     }
 

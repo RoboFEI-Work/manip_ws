@@ -232,6 +232,55 @@ Enviar goal manualmente:
 ros2 action send_goal /place_tag my_robot_msgs/action/PlaceTag "{tag_frame: 'tag_F20_20_B', table_pose: 'Mesa15'}" --feedback
 ```
 
+### Exclusao mutua entre pick e place
+
+Os action servers `/pick_tag` e `/place_tag` compartilham uma trava global do
+manipulador. Apenas uma action de manipulacao pode executar por vez, incluindo:
+
+- `pick` concorrente com outro `pick`;
+- `place` concorrente com outro `place`;
+- `pick` concorrente com `place`.
+
+Enquanto uma action estiver em execucao, um novo goal sera rejeitado com a
+mensagem de que o manipulador esta ocupado. A trava e liberada automaticamente
+ao terminar com sucesso, falha ou cancelamento. Isso nao altera o funcionamento
+normal da Behavior Tree, pois ela envia uma action e aguarda seu resultado antes
+de prosseguir para a seguinte.
+
+A exclusao mutua funciona entre os dois processos por meio de um arquivo de
+trava local. O parametro abaixo deve ter o mesmo valor nos dois action servers:
+
+- `manipulator_lock_file` (default: `/tmp/manip_ws_action.lock`)
+
+Exemplo ao iniciar os servidores manualmente:
+
+```bash
+ros2 run mtc_tutorial mtc_pick_action_node --ros-args \
+  -p manipulator_lock_file:=/tmp/manip_ws_action.lock
+```
+
+```bash
+ros2 run mtc_tutorial mtc_place_action_node --ros-args \
+  -p manipulator_lock_file:=/tmp/manip_ws_action.lock
+```
+
+O arquivo de trava coordena processos na mesma maquina. No fluxo recomendado,
+os dois action servers rodam no PC e, portanto, compartilham a mesma trava.
+
+### Cancelamento das actions
+
+Quando um cliente solicita o cancelamento:
+
+- o servidor marca a action como cancelada;
+- chama `stop()` nas interfaces MoveIt ativas do braco e da garra;
+- interrompe esperas por TF e temporizacoes entre etapas;
+- finaliza a action com estado `CANCELED`;
+- libera a trava para o proximo goal.
+
+Os nos BT de pick/place ja solicitam o cancelamento da action quando sao
+interrompidos (`halt`). As interfaces das actions e os nomes `/pick_tag` e
+`/place_tag` permanecem os mesmos.
+
 ## Behavior Tree (`manip_bt`)
 
 Executaveis disponiveis no pacote:
@@ -638,6 +687,21 @@ Hardware real nao responde:
 - Verifique se a porta serial esta correta em `manip.ros2_control.xacro` (padrao `/dev/ttyUSB0`).
 - Verifique se os IDs dos motores batem com o configurado.
 - Confirme que o baudrate dos motores esta em 57600.
+
+Goal de pick/place rejeitado como `manipulator is busy`:
+
+- Aguarde a action atual terminar ou cancele-a.
+- Confirme que pick e place usam o mesmo parametro `manipulator_lock_file`.
+- Verifique as actions ativas com `ros2 action list` e `ros2 action info /pick_tag`.
+- Se os servidores foram encerrados abruptamente, nao e necessario apagar o
+  arquivo: a trava do sistema operacional e liberada ao fechar o processo.
+
+Action permanece em movimento depois de uma tentativa de cancelamento:
+
+- Confirme que os executaveis instalados foram recompilados com `colcon build --packages-select mtc_tutorial`.
+- Execute `source install/setup.bash` no terminal do bringup.
+- Consulte os logs dos action servers para verificar `PICK cancellation requested`
+  ou `PLACE cancellation requested`.
 
 Erro `package 'realsense2_description' not found` na Raspberry:
 

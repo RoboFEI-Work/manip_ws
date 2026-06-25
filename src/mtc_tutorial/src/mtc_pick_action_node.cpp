@@ -14,9 +14,12 @@
 #include <tf2_ros/transform_listener.h>
 
 #include <chrono>
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <memory>
+#include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -28,6 +31,7 @@
 #endif
 
 #include "mtc_tutorial/container_state_store.hpp"
+#include "mtc_tutorial/manipulator_execution_lock.hpp"
 #include "my_robot_msgs/action/pick_tag.hpp"
 
 namespace mtc = moveit::task_constructor;
@@ -42,6 +46,17 @@ public:
     PickActionServer()
     : Node("pick_action_server")
     {
+        const auto lock_file = this->declare_parameter<std::string>(
+            "manipulator_lock_file",
+            "/tmp/manip_ws_action.lock");
+        execution_lock_ =
+            std::make_unique<mtc_tutorial::ManipulatorExecutionLock>(lock_file);
+        if (!execution_lock_->valid()) {
+            throw std::runtime_error(
+                "Failed to open manipulator lock file '" + lock_file + "': " +
+                execution_lock_->error());
+        }
+
         const auto default_container_state_file = getDefaultContainerStatePath();
         container_state_file_ = this->declare_parameter<std::string>(
             "container_state_file",
@@ -289,6 +304,80 @@ private:
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
     std::string container_state_file_;
     std::unique_ptr<mtc_tutorial::ContainerStateStore> container_state_store_;
+    std::unique_ptr<mtc_tutorial::ManipulatorExecutionLock> execution_lock_;
+    std::atomic_bool cancel_requested_{false};
+    std::mutex active_interfaces_mutex_;
+    std::shared_ptr<MoveGroupInterface> active_arm_;
+    std::shared_ptr<MoveGroupInterface> active_gripper_;
+
+    class ExecutionGuard
+    {
+    public:
+        explicit ExecutionGuard(PickActionServer & server)
+        : server_(server)
+        {
+        }
+
+        ~ExecutionGuard()
+        {
+            server_.clearActiveInterfaces();
+            server_.cancel_requested_.store(false);
+            server_.execution_lock_->release();
+        }
+
+    private:
+        PickActionServer & server_;
+    };
+
+    bool cancellationRequested() const
+    {
+        return cancel_requested_.load();
+    }
+
+    void setActiveInterfaces(
+        const std::shared_ptr<MoveGroupInterface> & arm,
+        const std::shared_ptr<MoveGroupInterface> & gripper)
+    {
+        std::lock_guard<std::mutex> lock(active_interfaces_mutex_);
+        active_arm_ = arm;
+        active_gripper_ = gripper;
+    }
+
+    void clearActiveInterfaces()
+    {
+        std::lock_guard<std::mutex> lock(active_interfaces_mutex_);
+        active_arm_.reset();
+        active_gripper_.reset();
+    }
+
+    void stopActiveMotion()
+    {
+        std::shared_ptr<MoveGroupInterface> arm;
+        std::shared_ptr<MoveGroupInterface> gripper;
+        {
+            std::lock_guard<std::mutex> lock(active_interfaces_mutex_);
+            arm = active_arm_;
+            gripper = active_gripper_;
+        }
+        if (arm) {
+            arm->stop();
+        }
+        if (gripper) {
+            gripper->stop();
+        }
+    }
+
+    bool sleepInterruptibly(const std::chrono::milliseconds duration)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + duration;
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (cancellationRequested()) {
+                return false;
+            }
+            rclcpp::sleep_for(std::chrono::milliseconds(50));
+        }
+        return true;
+    }
 
     void publish_stage(
         const std::shared_ptr<GoalHandlePickTag> & goal_handle,
@@ -304,6 +393,20 @@ private:
         const rclcpp_action::GoalUUID &,
         std::shared_ptr<const PickTag::Goal> goal)
     {
+        if (goal->tag_frame.empty()) {
+            RCLCPP_WARN(this->get_logger(), "Rejecting PICK goal: tag_frame is empty");
+            return rclcpp_action::GoalResponse::REJECT;
+        }
+
+        if (!execution_lock_->tryAcquire()) {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "Rejecting PICK for '%s': manipulator is busy",
+                goal->tag_frame.c_str());
+            return rclcpp_action::GoalResponse::REJECT;
+        }
+
+        cancel_requested_.store(false);
         RCLCPP_INFO(
             this->get_logger(),
             "Received goal tag=%s",
@@ -314,7 +417,9 @@ private:
     rclcpp_action::CancelResponse handle_cancel(
         const std::shared_ptr<GoalHandlePickTag>)
     {
-        RCLCPP_INFO(this->get_logger(), "Goal canceled");
+        RCLCPP_WARN(this->get_logger(), "PICK cancellation requested");
+        cancel_requested_.store(true);
+        stopActiveMotion();
         return rclcpp_action::CancelResponse::ACCEPT;
     }
 
@@ -345,12 +450,19 @@ private:
         geometry_msgs::msg::TransformStamped & out_tf,
         const std::chrono::milliseconds timeout,
         const std::chrono::milliseconds retry_period,
-        const std::string & cycle_name) const
+        const std::string & cycle_name)
     {
         const auto start = std::chrono::steady_clock::now();
         tf2::TransformException last_ex("unknown TF error");
 
         while (std::chrono::steady_clock::now() - start < timeout) {
+            if (cancellationRequested()) {
+                RCLCPP_WARN(
+                    this->get_logger(),
+                    "[%s] canceled while waiting for TF",
+                    cycle_name.c_str());
+                return false;
+            }
             try {
                 out_tf = getTagTransform(reference_frame, tag_frame);
                 return true;
@@ -358,7 +470,9 @@ private:
                 last_ex = ex;
             }
 
-            rclcpp::sleep_for(retry_period);
+            if (!sleepInterruptibly(retry_period)) {
+                return false;
+            }
         }
 
         RCLCPP_ERROR_STREAM(
@@ -374,6 +488,10 @@ private:
         const std::shared_ptr<MoveGroupInterface> & iface,
         const std::string & label)
     {
+        if (cancellationRequested()) {
+            return false;
+        }
+
         MoveGroupInterface::Plan plan;
 
         const bool success =
@@ -386,7 +504,15 @@ private:
             return false;
         }
 
+        if (cancellationRequested()) {
+            return false;
+        }
+
         const auto exec_result = iface->execute(plan);
+
+        if (cancellationRequested()) {
+            return false;
+        }
 
         if (exec_result != moveit::core::MoveItErrorCode::SUCCESS) {
             RCLCPP_ERROR_STREAM(
@@ -405,6 +531,10 @@ private:
         const std::string & label,
         bool use_orientation_constraint)
     {
+        if (cancellationRequested()) {
+            return false;
+        }
+
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink(eef_link);
 
@@ -468,7 +598,15 @@ private:
             return false;
         }
 
+        if (cancellationRequested()) {
+            return false;
+        }
+
         const auto exec_result = arm->execute(plan);
+
+        if (cancellationRequested()) {
+            return false;
+        }
 
         if (exec_result != moveit::core::MoveItErrorCode::SUCCESS) {
             RCLCPP_ERROR_STREAM(
@@ -519,6 +657,10 @@ private:
         mtc::Task & task,
         const std::string & task_name)
     {
+        if (cancellationRequested()) {
+            return false;
+        }
+
         try {
             task.init();
         } catch (mtc::InitStageException & e) {
@@ -541,9 +683,16 @@ private:
                 return false;
             }
 
+            if (cancellationRequested()) {
+                return false;
+            }
+
             task.introspection().publishSolution(*task.solutions().front());
 
             const auto result = task.execute(*task.solutions().front());
+            if (cancellationRequested()) {
+                return false;
+            }
             if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
                 RCLCPP_ERROR_STREAM(
                     this->get_logger(),
@@ -584,26 +733,58 @@ private:
         publish_stage(goal_handle, "pre_approach");
 
         constexpr double kTagXNearZero = 0.1;
+        constexpr double kTagYNearZero = 0.3;
         const double tag_x = tag_tf.transform.translation.x;
+        const double tag_y = tag_tf.transform.translation.y;
+
+
 
         if (std::abs(tag_x) > kTagXNearZero) {
+
+
+                arm->setStartStateToCurrentState();
+                arm->setEndEffectorLink("tcp");
+
+                if (tag_x > 0.0) {
+                    if (std::abs(tag_y) > kTagYNearZero) {
+                        arm->setNamedTarget("tag_direita_cima");
+                        if (!planAndExecute(arm, cycle_name + " go tag_direita_cima")) {
+                            return false;
+                        }
+                    } else {
+                        arm->setNamedTarget("tag_direita");
+                        if (!planAndExecute(arm, cycle_name + " go tag_direita")) {
+                            return false;
+                        }
+                    }
+                } else {
+                    if (std::abs(tag_y) > kTagYNearZero) {
+                        arm->setNamedTarget("tag_esquerda_cima");
+                        if (!planAndExecute(arm, cycle_name + " go tag_esquerda_cima")) {
+                            return false;
+                        }
+                    } else {
+                        arm->setNamedTarget("tag_esquerda");
+                        if (!planAndExecute(arm, cycle_name + " go tag_esquerda")) {
+                            return false;
+                        }
+                    }
+                }
+
+        }
+
+        if (std::abs(tag_y) > kTagYNearZero) {
             arm->setStartStateToCurrentState();
             arm->setEndEffectorLink("tcp");
-
-            if (tag_x > 0.0) {
-                arm->setNamedTarget("tag_direita");
-                if (!planAndExecute(arm, cycle_name + " go tag_direita")) {
-                    return false;
-                }
-            } else {
-                arm->setNamedTarget("tag_esquerda");
-                if (!planAndExecute(arm, cycle_name + " go tag_esquerda")) {
-                    return false;
-                }
+            arm->setNamedTarget("tag_cima");
+            if (!planAndExecute(arm, cycle_name + " go tag_cima")) {
+                return false;
             }
         }
 
-        rclcpp::sleep_for(std::chrono::milliseconds(1000));
+        if (!sleepInterruptibly(std::chrono::milliseconds(1000))) {
+            return false;
+        }
 
         if (!waitForTagTransform(
                 "base_link",
@@ -622,7 +803,7 @@ private:
         if (!moveToTarget(arm, tag_tf, "tcp", cycle_name + " tcp final", true)) {
             return false;
         }
-        arm->setMaxVelocityScalingFactor(1.2);
+        arm->setMaxVelocityScalingFactor(1.0);
         arm->setMaxAccelerationScalingFactor(1.0);
 
         publish_stage(goal_handle, "closing_gripper");
@@ -676,8 +857,27 @@ private:
 
     void execute(const std::shared_ptr<GoalHandlePickTag> goal_handle)
     {
+        ExecutionGuard execution_guard(*this);
         const auto goal = goal_handle->get_goal();
         auto result = std::make_shared<PickTag::Result>();
+
+        const auto finish_failure =
+            [this, &goal_handle, &result](const std::string & message)
+            {
+                result->success = false;
+                if (cancellationRequested() || goal_handle->is_canceling()) {
+                    result->message = "Pick canceled: " + message;
+                    goal_handle->canceled(result);
+                } else {
+                    result->message = message;
+                    goal_handle->abort(result);
+                }
+            };
+
+        if (cancellationRequested() || goal_handle->is_canceling()) {
+            finish_failure("canceled before execution started");
+            return;
+        }
 
         std::string container_pose;
         std::string lookup_error;
@@ -685,17 +885,18 @@ private:
             result->success = false;
             result->message =
                 "Pick failed: could not resolve an empty container from yaml: " + lookup_error;
-            goal_handle->abort(result);
+            finish_failure(result->message);
             return;
         }
 
         auto arm = std::make_shared<MoveGroupInterface>(shared_from_this(), "arm");
         auto gripper = std::make_shared<MoveGroupInterface>(shared_from_this(), "gripper");
+        setActiveInterfaces(arm, gripper);
 
         arm->setPoseReferenceFrame("base_link");
         arm->setPlanningTime(15.0);
         arm->setNumPlanningAttempts(20);
-        arm->setMaxVelocityScalingFactor(1.2);
+        arm->setMaxVelocityScalingFactor(1.0);
         arm->setMaxAccelerationScalingFactor(1.0);
         gripper->setMaxVelocityScalingFactor(1.0);
         gripper->setMaxAccelerationScalingFactor(1.0);
@@ -704,9 +905,7 @@ private:
         gripper->setStartStateToCurrentState();
         gripper->setNamedTarget("gripper_open");
         if (!planAndExecute(gripper, "open gripper")) {
-            result->success = false;
-            result->message = "Failed at opening gripper";
-            goal_handle->abort(result);
+            finish_failure("Pick failed while opening gripper");
             return;
         }
 
@@ -715,9 +914,7 @@ private:
         arm->setEndEffectorLink("tcp");
         arm->setNamedTarget("pegar_obj");
         if (!planAndExecute(arm, "pegar_obj initial")) {
-            result->success = false;
-            result->message = "Failed going to pegar_obj";
-            goal_handle->abort(result);
+            finish_failure("Pick failed while moving to pegar_obj");
             return;
         }
 
@@ -728,7 +925,7 @@ private:
         } catch (const std::exception & e) {
             result->success = false;
             result->message = std::string("Approach creation failed: ") + e.what();
-            goal_handle->abort(result);
+            finish_failure(result->message);
             return;
         }
 
@@ -739,7 +936,10 @@ private:
                 "Approach task failed. Continuing pick cycle with fallback path.");
         }
 
-        rclcpp::sleep_for(std::chrono::milliseconds(2000));
+        if (!sleepInterruptibly(std::chrono::milliseconds(2000))) {
+            finish_failure("canceled before the pick cycle");
+            return;
+        }
 
         const bool cycle_success = run_pick_cycle(
             arm,
@@ -748,6 +948,11 @@ private:
             container_pose,
             "ACTION_CYCLE",
             goal_handle);
+
+        if (cancellationRequested() || goal_handle->is_canceling()) {
+            finish_failure("canceled during pick cycle");
+            return;
+        }
 
         const bool success = cycle_success;
 
@@ -781,7 +986,7 @@ private:
             publish_stage(goal_handle, "done");
             goal_handle->succeed(result);
         } else {
-            goal_handle->abort(result);
+            finish_failure(result->message);
         }
     }
 };

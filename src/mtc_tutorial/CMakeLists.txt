@@ -12,6 +12,8 @@ find_package(moveit_ros_planning_interface REQUIRED)
 find_package(my_robot_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
+find_package(shape_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -84,8 +86,15 @@ ament_target_dependencies(
   "rclcpp"
 )
 
-install(TARGETS container_state_store mtc_node mtc_pick_action_node mtc_place_action_node analytical_ik_node
-  DESTINATION lib/${PROJECT_NAME})
+install(
+  TARGETS
+    container_state_store
+    mtc_node
+    mtc_pick_action_node
+    mtc_place_action_node
+    analytical_ik_node
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 install(DIRECTORY include/
   DESTINATION include/${PROJECT_NAME})
