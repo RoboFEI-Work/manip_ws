@@ -8,15 +8,23 @@
 #define ADDR_TORQUE_ENABLE 64
 #define ADDR_GOAL_VELOCITY 104
 #define ADDR_GOAL_POSITION 116
+#define ADDR_PRESENT_PWM 124
+#define ADDR_PRESENT_CURRENT 126
 #define ADDR_PRESENT_VELOCITY 128
 #define ADDR_PRESENT_POSITION 132
+#define ADDR_PRESENT_INPUT_VOLTAGE 144
+#define ADDR_PRESENT_TEMPERATURE 146
 
 #define LEN_GOAL_POSITION    4
 #define LEN_PRESENT_POSITION 4
+#define ADDR_TELEMETRY_START ADDR_PRESENT_PWM
+#define LEN_TELEMETRY_BLOCK 23
 
 #define RAD_TO_DXL_POSITION 651.088636364 // 1 / 0.0174533 / 0.088
 #define RAD_S_TO_RPM 9.549 // 60 / (2*PI)
 #define RPM_TO_DXL_VELOCITY 4.366812227 // X-series: 1 / 0.229 RPM per unit
+#define DXL_CURRENT_TO_AMP 0.00269
+#define DXL_VOLTAGE_TO_VOLT 0.1
 
 #define OPERATING_MODE_VELOCITY 1
 #define OPERATING_MODE_POSITION 3
@@ -25,6 +33,15 @@
 #include <iostream>
 #include <vector>
 #include <cstdint>
+
+struct XSeriesTelemetry
+{
+    bool valid{false};
+    double position_rad{0.0};
+    double current_amp{0.0};
+    double voltage_volt{0.0};
+    double temperature_celsius{0.0};
+};
 
 class XSeriesDriver {
     public:
@@ -73,7 +90,10 @@ class XSeriesDriver {
             delete group_sync_write_;
 
             group_sync_read_ = new dynamixel::GroupSyncRead(
-                portHandler_, packetHandler_, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION);
+                portHandler_,
+                packetHandler_,
+                ADDR_TELEMETRY_START,
+                LEN_TELEMETRY_BLOCK);
             group_sync_write_ = new dynamixel::GroupSyncWrite(
                 portHandler_, packetHandler_, ADDR_GOAL_POSITION, LEN_GOAL_POSITION);
 
@@ -82,19 +102,64 @@ class XSeriesDriver {
             }
         }
 
-        /// Lê posição de todos os motores em uma única transação serial.
-        /// Retorna vetor de posições em radianos, na mesma ordem de 'ids'.
-        std::vector<double> syncReadPositions(const std::vector<int> & ids)
+        /// Lê posição e telemetria de todos os motores em uma transação serial.
+        std::vector<XSeriesTelemetry> syncReadTelemetry(
+            const std::vector<int> & ids)
         {
-            std::vector<double> positions(ids.size(), 0.0);
-            group_sync_read_->txRxPacket();
-            for (size_t i = 0; i < ids.size(); ++i) {
-                uint32_t raw = group_sync_read_->getData(
-                    static_cast<uint8_t>(ids[i]), ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION);
-                int32_t signed_raw = static_cast<int32_t>(raw);
-                positions[i] = static_cast<double>(signed_raw - 2048) / RAD_TO_DXL_POSITION;
+            std::vector<XSeriesTelemetry> telemetry(ids.size());
+            const int communication_result = group_sync_read_->txRxPacket();
+            if (communication_result != COMM_SUCCESS) {
+                std::cerr
+                    << "Dynamixel SyncRead failed: "
+                    << packetHandler_->getTxRxResult(communication_result)
+                    << std::endl;
+                return telemetry;
             }
-            return positions;
+
+            for (size_t i = 0; i < ids.size(); ++i) {
+                const auto id = static_cast<uint8_t>(ids[i]);
+                if (!group_sync_read_->isAvailable(
+                        id,
+                        ADDR_TELEMETRY_START,
+                        LEN_TELEMETRY_BLOCK)) {
+                    continue;
+                }
+
+                const auto raw_position = static_cast<int32_t>(
+                    group_sync_read_->getData(
+                        id,
+                        ADDR_PRESENT_POSITION,
+                        LEN_PRESENT_POSITION));
+                const auto raw_current = static_cast<int16_t>(
+                    group_sync_read_->getData(
+                        id,
+                        ADDR_PRESENT_CURRENT,
+                        2));
+                const auto raw_voltage = static_cast<uint16_t>(
+                    group_sync_read_->getData(
+                        id,
+                        ADDR_PRESENT_INPUT_VOLTAGE,
+                        2));
+                const auto raw_temperature = static_cast<uint8_t>(
+                    group_sync_read_->getData(
+                        id,
+                        ADDR_PRESENT_TEMPERATURE,
+                        1));
+
+                telemetry[i].position_rad =
+                    static_cast<double>(raw_position - 2048) /
+                    RAD_TO_DXL_POSITION;
+                telemetry[i].current_amp =
+                    static_cast<double>(raw_current) *
+                    DXL_CURRENT_TO_AMP;
+                telemetry[i].voltage_volt =
+                    static_cast<double>(raw_voltage) *
+                    DXL_VOLTAGE_TO_VOLT;
+                telemetry[i].temperature_celsius =
+                    static_cast<double>(raw_temperature);
+                telemetry[i].valid = true;
+            }
+            return telemetry;
         }
 
         /// Escreve posições em todos os motores em uma única transação serial.

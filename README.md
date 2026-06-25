@@ -140,6 +140,14 @@ ros2 topic pub --once /manip/speech std_msgs/msg/String \
   "{data: 'Teste da sintese de voz do manipulador'}"
 ```
 
+O nó usa um ritmo e uma entonação ajustados para reduzir a fala picotada. Os
+valores podem ser afinados sem alterar o código:
+
+```bash
+ros2 run manip_audio speech_node --ros-args \
+  -p rate:=165 -p pitch:=45 -p word_gap:=0
+```
+
 Os dois computadores precisam estar no mesmo dominio ROS 2:
 
 ```bash
@@ -601,6 +609,22 @@ Ver estado das juntas:
 ```bash
 ros2 topic echo /joint_states
 ```
+
+Ver corrente, tensão, esforço estimado e temperatura dos Dynamixel:
+
+```bash
+ros2 topic echo /dynamic_joint_states
+```
+
+Durante cada execução de `/pick_tag`, o PC grava automaticamente a telemetria
+dos sete motores. Os arquivos PNG e CSV são salvos em:
+
+```text
+~/manip_ws/pick_telemetry/
+```
+
+O esforço é estimado a partir da corrente. A constante padrão é `2.4 N.m/A` e
+pode ser calibrada em `manip.ros2_control.xacro`.
 
 ## Deteccao de AprilTag e TF no RViz
 

@@ -13,42 +13,70 @@
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['manip_joint1']}</param>
                 </state_interface>
+                <state_interface name="current"/>
+                <state_interface name="voltage"/>
+                <state_interface name="effort"/>
+                <state_interface name="temperature"/>
             </joint>
             <joint name="manip_joint2">
                 <command_interface name="position"/>
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['manip_joint2']}</param>
                 </state_interface>
+                <state_interface name="current"/>
+                <state_interface name="voltage"/>
+                <state_interface name="effort"/>
+                <state_interface name="temperature"/>
             </joint>
             <joint name="manip_joint3">
                 <command_interface name="position"/>
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['manip_joint3']}</param>
                 </state_interface>
+                <state_interface name="current"/>
+                <state_interface name="voltage"/>
+                <state_interface name="effort"/>
+                <state_interface name="temperature"/>
             </joint>
             <joint name="manip_joint4">
                 <command_interface name="position"/>
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['manip_joint4']}</param>
                 </state_interface>
+                <state_interface name="current"/>
+                <state_interface name="voltage"/>
+                <state_interface name="effort"/>
+                <state_interface name="temperature"/>
             </joint>
             <joint name="manip_joint5">
                 <command_interface name="position"/>
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['manip_joint5']}</param>
                 </state_interface>
+                <state_interface name="current"/>
+                <state_interface name="voltage"/>
+                <state_interface name="effort"/>
+                <state_interface name="temperature"/>
             </joint>
             <joint name="manip_joint6">
                 <command_interface name="position"/>
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['manip_joint6']}</param>
                 </state_interface>
+                <state_interface name="current"/>
+                <state_interface name="voltage"/>
+                <state_interface name="effort"/>
+                <state_interface name="temperature"/>
             </joint>
             <joint name="manip_joint7">
                 <command_interface name="position"/>
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['manip_joint7']}</param>
                 </state_interface>
+                <state_interface name="current"/>
+                <state_interface name="voltage"/>
+                <state_interface name="effort"/>
+                <state_interface name="temperature"/>
             </joint>
 
         </ros2_control>

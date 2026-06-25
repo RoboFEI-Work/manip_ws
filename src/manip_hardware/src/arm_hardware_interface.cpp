@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <exception>
+#include <string>
 
 namespace arm_hardware {
 
@@ -55,6 +56,22 @@ hardware_interface::CallbackReturn ArmHardwareInterface::on_init
     }
     port_ = port_it->second;
 
+    const auto torque_constant_it =
+        info_.hardware_parameters.find("torque_constant_nm_per_amp");
+    if (torque_constant_it != info_.hardware_parameters.end()) {
+        try {
+            torque_constant_nm_per_amp_ =
+                std::stod(torque_constant_it->second);
+        } catch (const std::exception & e) {
+            RCLCPP_ERROR(
+                get_logger(),
+                "Invalid torque_constant_nm_per_amp '%s': %s",
+                torque_constant_it->second.c_str(),
+                e.what());
+            return hardware_interface::CallbackReturn::ERROR;
+        }
+    }
+
     driver_ = std::make_shared<XSeriesDriver>(port_);
 
     return hardware_interface::CallbackReturn::SUCCESS;
@@ -106,12 +123,25 @@ hardware_interface::return_type ArmHardwareInterface::read
     (void)time;
     (void)period;
 
-    // Leitura de todos os motores em uma única transação SyncRead
-    const auto positions = driver_->syncReadPositions(joint_motor_ids_);
+    // Posição, corrente, tensão e temperatura em uma única SyncRead.
+    const auto telemetry = driver_->syncReadTelemetry(joint_motor_ids_);
     for (size_t i = 0; i < joint_names_.size(); ++i) {
-        double pos = positions[i];
-        if (joint_motor_ids_[i] >= 6) pos = -pos;
+        if (!telemetry[i].valid) {
+            continue;
+        }
+
+        const double direction = joint_motor_ids_[i] >= 6 ? -1.0 : 1.0;
+        const double pos = direction * telemetry[i].position_rad;
+        const double current = direction * telemetry[i].current_amp;
+        const double effort = current * torque_constant_nm_per_amp_;
+
         set_state(joint_names_[i] + "/position", pos);
+        set_state(joint_names_[i] + "/current", current);
+        set_state(joint_names_[i] + "/voltage", telemetry[i].voltage_volt);
+        set_state(joint_names_[i] + "/effort", effort);
+        set_state(
+            joint_names_[i] + "/temperature",
+            telemetry[i].temperature_celsius);
     }
 
     return hardware_interface::return_type::OK;

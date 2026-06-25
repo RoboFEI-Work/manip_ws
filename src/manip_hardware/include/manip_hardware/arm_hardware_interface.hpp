@@ -35,6 +35,7 @@ private:
     std::vector<int> joint_motor_ids_;
 
     std::string port_;
+    double torque_constant_nm_per_amp_{2.4};
 
 }; // class ArmHardwareInterface
 

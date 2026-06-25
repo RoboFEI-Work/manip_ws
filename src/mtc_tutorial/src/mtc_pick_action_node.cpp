@@ -12,6 +12,7 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
+#include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/string.hpp>
 
 #include <chrono>
@@ -274,6 +275,10 @@ public:
         speech_enabled_ = this->declare_parameter<bool>("speech_enabled", true);
         speech_publisher_ =
             this->create_publisher<std_msgs::msg::String>("/manip/speech", 10);
+        pick_active_publisher_ =
+            this->create_publisher<std_msgs::msg::Bool>(
+                "/manip/pick_active",
+                rclcpp::QoS(1).transient_local().reliable());
 
         action_server_ =
             rclcpp_action::create_server<PickTag>(
@@ -308,6 +313,7 @@ private:
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr speech_publisher_;
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr pick_active_publisher_;
     bool speech_enabled_{true};
     std::string container_state_file_;
     std::unique_ptr<mtc_tutorial::ContainerStateStore> container_state_store_;
@@ -327,6 +333,7 @@ private:
 
         ~ExecutionGuard()
         {
+            server_.publishPickActive(false);
             server_.clearActiveInterfaces();
             server_.cancel_requested_.store(false);
             server_.execution_lock_->release();
@@ -365,6 +372,13 @@ private:
         message.data = text;
         speech_publisher_->publish(message);
         RCLCPP_INFO(this->get_logger(), "[SPEECH] %s", text.c_str());
+    }
+
+    void publishPickActive(bool active)
+    {
+        std_msgs::msg::Bool message;
+        message.data = active;
+        pick_active_publisher_->publish(message);
     }
 
     void setActiveInterfaces(
@@ -905,6 +919,7 @@ private:
     void execute(const std::shared_ptr<GoalHandlePickTag> goal_handle)
     {
         ExecutionGuard execution_guard(*this);
+        publishPickActive(true);
         const auto goal = goal_handle->get_goal();
         auto result = std::make_shared<PickTag::Result>();
 

@@ -2,6 +2,10 @@
 /install/
 /log/
 
+# Python cache
+__pycache__/
+*.py[cod]
+
 # Editor metadata
 /.vscode/
 .vscode/

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import queue
+import re
 import shutil
 import subprocess
 import threading
@@ -17,19 +18,29 @@ class SpeechNode(Node):
 
         self.declare_parameter('executable', 'espeak-ng')
         self.declare_parameter('voice', 'pt-br')
-        self.declare_parameter('rate', 155)
+        self.declare_parameter('rate', 165)
+        self.declare_parameter('pitch', 45)
+        self.declare_parameter('word_gap', 0)
         self.declare_parameter('volume', 100)
         self.declare_parameter('queue_size', 10)
 
         self._executable = str(self.get_parameter('executable').value)
         self._voice = str(self.get_parameter('voice').value)
         self._rate = int(self.get_parameter('rate').value)
+        self._pitch = int(self.get_parameter('pitch').value)
+        self._word_gap = int(self.get_parameter('word_gap').value)
         self._volume = int(self.get_parameter('volume').value)
-        queue_size = max(1, int(self.get_parameter('queue_size').value))
+        configured_queue_size = (
+            self.get_parameter('queue_size').value
+        )
+        queue_size = max(1, int(configured_queue_size))
 
         self._messages = queue.Queue(maxsize=queue_size)
         self._running = True
-        self._worker = threading.Thread(target=self._speech_worker, daemon=True)
+        self._worker = threading.Thread(
+            target=self._speech_worker,
+            daemon=True,
+        )
         self._worker.start()
 
         self.create_subscription(String, '/manip/speech', self._on_speech, 10)
@@ -45,7 +56,7 @@ class SpeechNode(Node):
             )
 
     def _on_speech(self, message):
-        text = message.data.strip()
+        text = self._normalize_text(message.data)
         if not text:
             return
 
@@ -62,6 +73,24 @@ class SpeechNode(Node):
                 pass
             self._messages.put_nowait(text)
 
+    @staticmethod
+    def _normalize_text(text):
+        """Remove formatting artifacts that produce unnatural pauses."""
+        text = text.replace('_', ' ')
+        return re.sub(r'\s+', ' ', text).strip()
+
+    def _speech_command(self, text):
+        return [
+            self._executable,
+            '-v', self._voice,
+            '-s', str(self._rate),
+            '-p', str(self._pitch),
+            '-g', str(self._word_gap),
+            '-a', str(self._volume),
+            '-z',
+            text,
+        ]
+
     def _speech_worker(self):
         while self._running:
             try:
@@ -71,20 +100,16 @@ class SpeechNode(Node):
 
             try:
                 subprocess.run(
-                    [
-                        self._executable,
-                        '-v', self._voice,
-                        '-s', str(self._rate),
-                        '-a', str(self._volume),
-                        text,
-                    ],
+                    self._speech_command(text),
                     check=False,
                     timeout=30,
                 )
             except FileNotFoundError:
                 pass
             except subprocess.TimeoutExpired:
-                self.get_logger().warning('A síntese de voz excedeu 30 segundos.')
+                self.get_logger().warning(
+                    'A síntese de voz excedeu 30 segundos.'
+                )
             finally:
                 self._messages.task_done()
 
