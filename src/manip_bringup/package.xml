@@ -16,6 +16,7 @@
   <exec_depend>rviz2</exec_depend>
   <exec_depend>mtc_tutorial</exec_depend>
   <exec_depend>my_robot_msgs</exec_depend>
+  <exec_depend>manip_audio</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

@@ -12,6 +12,7 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
+#include <std_msgs/msg/string.hpp>
 
 #include <chrono>
 #include <atomic>
@@ -270,6 +271,10 @@ public:
             std::make_shared<tf2_ros::TransformListener>(
                 *tf_buffer_);
 
+        speech_enabled_ = this->declare_parameter<bool>("speech_enabled", true);
+        speech_publisher_ =
+            this->create_publisher<std_msgs::msg::String>("/manip/speech", 10);
+
         action_server_ =
             rclcpp_action::create_server<PickTag>(
             this,
@@ -302,6 +307,8 @@ private:
     rclcpp_action::Server<PickTag>::SharedPtr action_server_;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr speech_publisher_;
+    bool speech_enabled_{true};
     std::string container_state_file_;
     std::unique_ptr<mtc_tutorial::ContainerStateStore> container_state_store_;
     std::unique_ptr<mtc_tutorial::ManipulatorExecutionLock> execution_lock_;
@@ -332,6 +339,32 @@ private:
     bool cancellationRequested() const
     {
         return cancel_requested_.load();
+    }
+
+    static std::string spokenTagName(std::string tag_frame)
+    {
+        constexpr char prefix[] = "tag_";
+        if (tag_frame.rfind(prefix, 0) == 0) {
+            tag_frame.erase(0, sizeof(prefix) - 1);
+        }
+        for (char & character : tag_frame) {
+            if (character == '_') {
+                character = ' ';
+            }
+        }
+        return tag_frame;
+    }
+
+    void speak(const std::string & text)
+    {
+        if (!speech_enabled_ || text.empty()) {
+            return;
+        }
+
+        std_msgs::msg::String message;
+        message.data = text;
+        speech_publisher_->publish(message);
+        RCLCPP_INFO(this->get_logger(), "[SPEECH] %s", text.c_str());
     }
 
     void setActiveInterfaces(
@@ -529,7 +562,9 @@ private:
         const geometry_msgs::msg::TransformStamped & tf,
         const std::string & eef_link,
         const std::string & label,
-        bool use_orientation_constraint)
+        bool use_orientation_constraint,
+        const std::string & ik_success_speech = "",
+        const std::string & ik_failure_speech = "")
     {
         if (cancellationRequested()) {
             return false;
@@ -595,8 +630,11 @@ private:
             RCLCPP_ERROR_STREAM(
                 this->get_logger(),
                 "Planning failed: " << label);
+            speak(ik_failure_speech);
             return false;
         }
+
+        speak(ik_success_speech);
 
         if (cancellationRequested()) {
             return false;
@@ -727,9 +765,11 @@ private:
                 std::chrono::milliseconds(5000),
                 std::chrono::milliseconds(200),
                 cycle_name + " detect_tag")) {
+            speak("Não encontrei a tag " + spokenTagName(tag_frame));
             return false;
         }
 
+        speak("Identifiquei a tag " + spokenTagName(tag_frame));
         publish_stage(goal_handle, "pre_approach");
 
         constexpr double kTagXNearZero = 0.1;
@@ -800,7 +840,14 @@ private:
         arm->setMaxAccelerationScalingFactor(0.2);
         
         publish_stage(goal_handle, "final_approach");
-        if (!moveToTarget(arm, tag_tf, "tcp", cycle_name + " tcp final", true)) {
+        if (!moveToTarget(
+                arm,
+                tag_tf,
+                "tcp",
+                cycle_name + " tcp final",
+                true,
+                "Encontrei uma solução de I K para a tag " + spokenTagName(tag_frame),
+                "Não encontrei uma solução de I K para a tag " + spokenTagName(tag_frame))) {
             return false;
         }
         arm->setMaxVelocityScalingFactor(1.0);

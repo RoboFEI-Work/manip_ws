@@ -11,6 +11,7 @@
     <arg name="launch_apriltag" default="true"/>
     <arg name="launch_pick_action" default="true"/>
     <arg name="launch_place_action" default="true"/>
+    <arg name="launch_speech" default="true"/>
     <arg name="reset_container_states" default="true"/>
     <arg name="apriltag_params_file" default="$(env HOME)/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml"/>
 
@@ -46,6 +47,10 @@
     </group>
 
     <node pkg="manip_commander" exec="commmander"/>
+
+    <group if="$(var launch_speech)">
+        <node pkg="manip_audio" exec="speech_node" output="screen"/>
+    </group>
 
     <group if="$(var launch_pick_action)">
         <node pkg="mtc_tutorial" exec="mtc_pick_action_node" output="screen">

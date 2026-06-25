@@ -6,7 +6,7 @@ Este repositorio contem a descricao do robo, configuracao do MoveIt 2, bringup, 
 
 ## Visao geral
 
-Este workspace possui 8 pacotes principais:
+Este workspace possui 9 pacotes principais:
 
 - `manip_description`: URDF/Xacro, RViz e launch para visualizacao do robo.
 - `manip_moveit_config`: configuracao MoveIt 2 (SRDF, kinematics, limites, controladores e launch files).
@@ -16,6 +16,7 @@ Este workspace possui 8 pacotes principais:
 - `manip_hardware`: interface de hardware `ros2_control` para os 7 motores Dynamixel XM540 (joints 1-5 do braco, joints 6-7 da garra).
 - `mtc_tutorial`: nos de manipulacao com MoveIt Task Constructor e action servers de pick/place.
 - `my_robot_msgs`: interfaces ROS 2 customizadas (actions `PickTag` e `PlaceTag`).
+- `manip_audio`: sintese de voz para avisos e depuracao do manipulador.
 
 ## Estrutura do repositorio
 
@@ -46,6 +47,11 @@ Este workspace possui 8 pacotes principais:
 - `rosdep` configurado.
 - `dynamixel_sdk` instalado na Raspberry Pi/maquina que controla os motores.
 - `realsense2_camera` e `realsense2_description` instalados no PC quando a camera estiver conectada nele.
+- `espeak-ng` instalado no computador que reproduzira a voz:
+
+```bash
+sudo apt install espeak-ng
+```
 
 ## Setup e build
 
@@ -61,7 +67,7 @@ source install/setup.bash
 Build apenas dos pacotes do manip:
 
 ```bash
-colcon build --packages-select manip_description manip_moveit_config manip_bringup manip_commander manip_bt manip_hardware my_robot_msgs mtc_tutorial
+colcon build --packages-select manip_description manip_moveit_config manip_bringup manip_commander manip_bt manip_hardware my_robot_msgs mtc_tutorial manip_audio
 source install/setup.bash
 ```
 
@@ -119,6 +125,21 @@ O `manip_pc.launch.xml` sobe por padrao:
 
 Ele nao sobe `ros2_control_node`, porque os controladores estao na Raspberry.
 
+Por padrao, o PC tambem sobe o `manip_audio`. Durante o pick, o robo anuncia
+quando identifica a tag, encontra uma solucao de IK ou nao encontra a tag.
+Para desativar:
+
+```bash
+ros2 launch manip_bringup manip_pc.launch.xml launch_speech:=false
+```
+
+Para testar a voz diretamente:
+
+```bash
+ros2 topic pub --once /manip/speech std_msgs/msg/String \
+  "{data: 'Teste da sintese de voz do manipulador'}"
+```
+
 Os dois computadores precisam estar no mesmo dominio ROS 2:
 
 ```bash
@@ -172,6 +193,7 @@ Esse launch sempre usa `use_realsense:=false` no Xacro, entao a Raspberry nao pr
 - `launch_apriltag` (default: `true`)
 - `launch_pick_action` (default: `true`)
 - `launch_place_action` (default: `true`)
+- `launch_speech` (default: `true`)
 - `reset_container_states` (default: `true`)
 - `apriltag_params_file` (default: `$(env HOME)/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml`)
 
@@ -182,6 +204,7 @@ Esse launch sempre usa `use_realsense:=false` no Xacro, entao a Raspberry nao pr
 - `launch_apriltag` (default: `false`)
 - `launch_pick_action` (default: `true`)
 - `launch_place_action` (default: `true`)
+- `launch_speech` (default: `true`)
 - `reset_container_states` (default: `true`)
 - `apriltag_params_file` (default: `$(env HOME)/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml`)
 

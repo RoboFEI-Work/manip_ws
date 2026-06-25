@@ -53,6 +53,7 @@ ament_target_dependencies(
   "my_robot_msgs"
   "rclcpp"
   "rclcpp_action"
+  "std_msgs"
   "tf2"
   "tf2_ros"
   "tf2_geometry_msgs"
