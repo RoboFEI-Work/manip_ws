@@ -1,5 +1,5 @@
 actions:
-  - kind: pick
+  - kind: place
     tag_frame: tag_S40_40_B
   - kind: pick
     tag_frame: tag_M30_nut
