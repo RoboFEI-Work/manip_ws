@@ -19,7 +19,7 @@
   <depend>rclcpp_action</depend>
   <depend>shape_msgs</depend>
   <depend>std_msgs</depend>
-  <exec_depend>control_msgs</exec_depend>
+  <depend>control_msgs</depend>
   <exec_depend>python3-matplotlib</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <depend>tf2</depend>

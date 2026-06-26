@@ -7,6 +7,7 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(control_msgs REQUIRED)
 find_package(moveit_task_constructor_core REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(my_robot_msgs REQUIRED)
@@ -51,6 +52,7 @@ ament_target_dependencies(
   "moveit_task_constructor_core"
   "moveit_ros_planning_interface"
   "my_robot_msgs"
+  "control_msgs"
   "rclcpp"
   "rclcpp_action"
   "std_msgs"

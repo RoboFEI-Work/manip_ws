@@ -14,6 +14,9 @@
             <arg name="launch_place_action" default="true"/>
             <arg name="launch_speech" default="true"/>
             <arg name="launch_pick_telemetry" default="true"/>
+            <arg name="verify_grasp_effort" default="false"/>
+            <arg name="grasp_min_effort_nm" default="0.15"/>
+            <arg name="grasp_min_effort_increase_nm" default="0.05"/>
             <arg name="reset_container_states" default="true"/>
             <arg name="apriltag_params_file" default="$(env HOME)/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml"/>
 
@@ -77,6 +80,9 @@
             <group if="$(var launch_pick_action)">
                   <node pkg="mtc_tutorial" exec="mtc_pick_action_node" output="screen">
                         <param name="reset_container_states_on_start" value="$(var reset_container_states)"/>
+                        <param name="verify_grasp_effort" value="$(var verify_grasp_effort)"/>
+                        <param name="grasp_min_effort_nm" value="$(var grasp_min_effort_nm)"/>
+                        <param name="grasp_min_effort_increase_nm" value="$(var grasp_min_effort_increase_nm)"/>
                   </node>
             </group>
 

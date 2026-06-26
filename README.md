@@ -626,6 +626,20 @@ dos sete motores. Os arquivos PNG e CSV são salvos em:
 O esforço é estimado a partir da corrente. A constante padrão é `2.4 N.m/A` e
 pode ser calibrada em `manip.ros2_control.xacro`.
 
+Depois de fechar a garra, o pick compara o esforço dos motores 6 e 7 com o
+valor medido antes do fechamento. Por padrão, ambos precisam atingir pelo
+menos `0.15 N.m` e aumentar pelo menos `0.05 N.m`. Para ajustar:
+
+```bash
+ros2 launch manip_bringup manip_pc.launch.xml \
+  verify_grasp_effort:=true \
+  grasp_min_effort_nm:=0.15 \
+  grasp_min_effort_increase_nm:=0.05
+```
+
+Os parâmetros `grasp_min_effort_nm` e `grasp_min_effort_increase_nm` também
+podem ser definidos diretamente no nó `mtc_pick_action_node`.
+
 ## Deteccao de AprilTag e TF no RViz
 
 No fluxo normal com Raspberry, `manip_pc.launch.xml` ja sobe a RealSense e o detector AprilTag por padrao. Os comandos abaixo sao uteis para diagnostico ou para subir cada parte manualmente.

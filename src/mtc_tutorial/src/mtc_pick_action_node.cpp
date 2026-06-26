@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 
+#include <control_msgs/msg/dynamic_joint_state.hpp>
 #include <moveit/move_group_interface/move_group_interface.hpp>
 #include <moveit/task_constructor/solvers.h>
 #include <moveit/task_constructor/stages.h>
@@ -21,6 +22,7 @@
 #include <cstdlib>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -280,6 +282,30 @@ public:
                 "/manip/pick_active",
                 rclcpp::QoS(1).transient_local().reliable());
 
+        verify_grasp_effort_ =
+            this->declare_parameter<bool>("verify_grasp_effort", true);
+        grasp_min_effort_nm_ =
+            this->declare_parameter<double>("grasp_min_effort_nm", 0.15);
+        grasp_min_effort_increase_nm_ =
+            this->declare_parameter<double>(
+                "grasp_min_effort_increase_nm",
+                0.05);
+        grasp_effort_sample_duration_ =
+            this->declare_parameter<double>(
+                "grasp_effort_sample_duration",
+                0.8);
+        grasp_effort_max_age_ =
+            this->declare_parameter<double>("grasp_effort_max_age", 0.4);
+
+        effort_subscription_ =
+            this->create_subscription<control_msgs::msg::DynamicJointState>(
+                "/dynamic_joint_states",
+                20,
+                std::bind(
+                    &PickActionServer::onDynamicJointState,
+                    this,
+                    std::placeholders::_1));
+
         action_server_ =
             rclcpp_action::create_server<PickTag>(
             this,
@@ -314,7 +340,14 @@ private:
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr speech_publisher_;
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr pick_active_publisher_;
+    rclcpp::Subscription<control_msgs::msg::DynamicJointState>::SharedPtr
+        effort_subscription_;
     bool speech_enabled_{true};
+    bool verify_grasp_effort_{true};
+    double grasp_min_effort_nm_{0.15};
+    double grasp_min_effort_increase_nm_{0.05};
+    double grasp_effort_sample_duration_{0.8};
+    double grasp_effort_max_age_{0.4};
     std::string container_state_file_;
     std::unique_ptr<mtc_tutorial::ContainerStateStore> container_state_store_;
     std::unique_ptr<mtc_tutorial::ManipulatorExecutionLock> execution_lock_;
@@ -322,6 +355,12 @@ private:
     std::mutex active_interfaces_mutex_;
     std::shared_ptr<MoveGroupInterface> active_arm_;
     std::shared_ptr<MoveGroupInterface> active_gripper_;
+    std::mutex effort_mutex_;
+    double motor6_effort_{0.0};
+    double motor7_effort_{0.0};
+    std::chrono::steady_clock::time_point effort_update_time_;
+    std::uint64_t effort_update_sequence_{0};
+    bool effort_available_{false};
 
     class ExecutionGuard
     {
@@ -379,6 +418,167 @@ private:
         std_msgs::msg::Bool message;
         message.data = active;
         pick_active_publisher_->publish(message);
+    }
+
+    void onDynamicJointState(
+        const control_msgs::msg::DynamicJointState::SharedPtr message)
+    {
+        std::optional<double> motor6_effort;
+        std::optional<double> motor7_effort;
+
+        for (size_t i = 0; i < message->joint_names.size(); ++i) {
+            if (i >= message->interface_values.size()) {
+                break;
+            }
+
+            const auto & joint_name = message->joint_names[i];
+            if (joint_name != "manip_joint6" &&
+                joint_name != "manip_joint7") {
+                continue;
+            }
+
+            const auto & interface_value = message->interface_values[i];
+            for (size_t j = 0;
+                j < interface_value.interface_names.size();
+                ++j) {
+                if (j >= interface_value.values.size()) {
+                    break;
+                }
+                if (interface_value.interface_names[j] != "effort") {
+                    continue;
+                }
+
+                if (joint_name == "manip_joint6") {
+                    motor6_effort = interface_value.values[j];
+                } else {
+                    motor7_effort = interface_value.values[j];
+                }
+                break;
+            }
+        }
+
+        if (!motor6_effort || !motor7_effort) {
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(effort_mutex_);
+        motor6_effort_ = *motor6_effort;
+        motor7_effort_ = *motor7_effort;
+        effort_update_time_ = std::chrono::steady_clock::now();
+        ++effort_update_sequence_;
+        effort_available_ = true;
+    }
+
+    struct GripperEffortSample
+    {
+        double motor6{0.0};
+        double motor7{0.0};
+        std::uint64_t sequence{0};
+    };
+
+    std::optional<GripperEffortSample> getFreshGripperEffort()
+    {
+        std::lock_guard<std::mutex> lock(effort_mutex_);
+        if (!effort_available_) {
+            return std::nullopt;
+        }
+
+        const auto age =
+            std::chrono::steady_clock::now() - effort_update_time_;
+        if (age > std::chrono::duration<double>(grasp_effort_max_age_)) {
+            return std::nullopt;
+        }
+
+        return GripperEffortSample{
+            std::abs(motor6_effort_),
+            std::abs(motor7_effort_),
+            effort_update_sequence_
+        };
+    }
+
+    std::optional<GripperEffortSample> waitForFreshGripperEffort(
+        const std::chrono::milliseconds timeout)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (cancellationRequested()) {
+                return std::nullopt;
+            }
+
+            const auto sample = getFreshGripperEffort();
+            if (sample) {
+                return sample;
+            }
+            rclcpp::sleep_for(std::chrono::milliseconds(20));
+        }
+        return std::nullopt;
+    }
+
+    bool verifyGraspByEffort(
+        const GripperEffortSample & baseline,
+        const std::string & cycle_name)
+    {
+        const auto deadline =
+            std::chrono::steady_clock::now() +
+            std::chrono::duration<double>(grasp_effort_sample_duration_);
+        double motor6_sum = 0.0;
+        double motor7_sum = 0.0;
+        size_t sample_count = 0;
+        std::uint64_t last_sequence = baseline.sequence;
+
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (cancellationRequested()) {
+                return false;
+            }
+
+            const auto sample = getFreshGripperEffort();
+            if (sample && sample->sequence != last_sequence) {
+                motor6_sum += sample->motor6;
+                motor7_sum += sample->motor7;
+                ++sample_count;
+                last_sequence = sample->sequence;
+            }
+            rclcpp::sleep_for(std::chrono::milliseconds(20));
+        }
+
+        if (sample_count == 0) {
+            RCLCPP_ERROR(
+                this->get_logger(),
+                "[%s] grasp verification failed: no fresh effort samples",
+                cycle_name.c_str());
+            return false;
+        }
+
+        const double motor6_average =
+            motor6_sum / static_cast<double>(sample_count);
+        const double motor7_average =
+            motor7_sum / static_cast<double>(sample_count);
+        const double motor6_increase =
+            motor6_average - baseline.motor6;
+        const double motor7_increase =
+            motor7_average - baseline.motor7;
+
+        const bool motor6_loaded =
+            motor6_average >= grasp_min_effort_nm_ &&
+            motor6_increase >= grasp_min_effort_increase_nm_;
+        const bool motor7_loaded =
+            motor7_average >= grasp_min_effort_nm_ &&
+            motor7_increase >= grasp_min_effort_increase_nm_;
+
+        RCLCPP_INFO(
+            this->get_logger(),
+            "[%s] grasp effort: M6 baseline=%.3f avg=%.3f delta=%.3f Nm; "
+            "M7 baseline=%.3f avg=%.3f delta=%.3f Nm; samples=%zu",
+            cycle_name.c_str(),
+            baseline.motor6,
+            motor6_average,
+            motor6_increase,
+            baseline.motor7,
+            motor7_average,
+            motor7_increase,
+            sample_count);
+
+        return motor6_loaded && motor7_loaded;
     }
 
     void setActiveInterfaces(
@@ -867,11 +1067,42 @@ private:
         arm->setMaxVelocityScalingFactor(1.0);
         arm->setMaxAccelerationScalingFactor(1.0);
 
+        std::optional<GripperEffortSample> effort_before_close;
+        if (verify_grasp_effort_) {
+            effort_before_close = waitForFreshGripperEffort(
+                std::chrono::milliseconds(1000));
+            if (!effort_before_close) {
+                RCLCPP_ERROR(
+                    this->get_logger(),
+                    "Cannot verify grasp: gripper effort telemetry is unavailable");
+                speak("Não consigo verificar o esforço da garra");
+                return false;
+            }
+        }
+
         publish_stage(goal_handle, "closing_gripper");
         gripper->setStartStateToCurrentState();
         gripper->setNamedTarget("gripper_close");
         if (!planAndExecute(gripper, cycle_name + " close gripper")) {
             return false;
+        }
+
+        if (verify_grasp_effort_) {
+            publish_stage(goal_handle, "verifying_grasp");
+            if (!verifyGraspByEffort(*effort_before_close, cycle_name)) {
+                speak("A garra não detectou o bloco");
+                RCLCPP_WARN(
+                    this->get_logger(),
+                    "[%s] opening gripper after failed grasp verification",
+                    cycle_name.c_str());
+                gripper->setStartStateToCurrentState();
+                gripper->setNamedTarget("gripper_open");
+                (void)planAndExecute(
+                    gripper,
+                    cycle_name + " reopen after failed grasp");
+                return false;
+            }
+            speak("Bloco confirmado pela força da garra");
         }
 
         publish_stage(goal_handle, "returning_to_pegar_obj");
