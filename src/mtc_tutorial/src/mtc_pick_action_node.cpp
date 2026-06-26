@@ -296,6 +296,8 @@ public:
                 0.8);
         grasp_effort_max_age_ =
             this->declare_parameter<double>("grasp_effort_max_age", 0.4);
+        grasp_retry_attempts_ =
+            this->declare_parameter<int>("grasp_retry_attempts", 1);
 
         effort_subscription_ =
             this->create_subscription<control_msgs::msg::DynamicJointState>(
@@ -348,6 +350,7 @@ private:
     double grasp_min_effort_increase_nm_{0.05};
     double grasp_effort_sample_duration_{0.8};
     double grasp_effort_max_age_{0.4};
+    int grasp_retry_attempts_{1};
     std::string container_state_file_;
     std::unique_ptr<mtc_tutorial::ContainerStateStore> container_state_store_;
     std::unique_ptr<mtc_tutorial::ManipulatorExecutionLock> execution_lock_;
@@ -819,7 +822,7 @@ private:
         MoveGroupInterface::Plan plan;
 
         arm->setGoalPositionTolerance(0.01);
-        arm->setGoalOrientationTolerance(use_orientation_constraint ? 0.35 : M_PI);
+        arm->setGoalOrientationTolerance(use_orientation_constraint ? 0.45 : M_PI);
 
         arm->clearPoseTargets();
         arm->setPoseTarget(target_pose, eef_link);
@@ -967,8 +970,10 @@ private:
         const std::string & tag_frame,
         const std::string & container_pose,
         const std::string & cycle_name,
-        const std::shared_ptr<GoalHandlePickTag> & goal_handle)
+        const std::shared_ptr<GoalHandlePickTag> & goal_handle,
+        bool & failed_grasp_verification)
     {
+        failed_grasp_verification = false;
         publish_stage(goal_handle, "detecting_tag");
 
         geometry_msgs::msg::TransformStamped tag_tf;
@@ -987,7 +992,7 @@ private:
         publish_stage(goal_handle, "pre_approach");
 
         constexpr double kTagXNearZero = 0.1;
-        constexpr double kTagYNearZero = 0.3;
+        constexpr double kTagYNearZero = 0.4;
         const double tag_x = tag_tf.transform.translation.x;
         const double tag_y = tag_tf.transform.translation.y;
 
@@ -1027,7 +1032,7 @@ private:
 
         }
 
-        if (std::abs(tag_y) > kTagYNearZero) {
+        if (std::abs(tag_y) > kTagYNearZero && std::abs(tag_x) <= kTagXNearZero) {
             arm->setStartStateToCurrentState();
             arm->setEndEffectorLink("tcp");
             arm->setNamedTarget("tag_cima");
@@ -1090,6 +1095,7 @@ private:
         if (verify_grasp_effort_) {
             publish_stage(goal_handle, "verifying_grasp");
             if (!verifyGraspByEffort(*effort_before_close, cycle_name)) {
+                failed_grasp_verification = true;
                 speak("A garra não detectou o bloco");
                 RCLCPP_WARN(
                     this->get_logger(),
@@ -1234,13 +1240,59 @@ private:
             return;
         }
 
-        const bool cycle_success = run_pick_cycle(
-            arm,
-            gripper,
-            goal->tag_frame,
-            container_pose,
-            "ACTION_CYCLE",
-            goal_handle);
+        const int max_pick_attempts =
+            grasp_retry_attempts_ < 0 ? 1 : grasp_retry_attempts_ + 1;
+        bool cycle_success = false;
+        bool failed_grasp_verification = false;
+
+        for (int attempt = 1; attempt <= max_pick_attempts; ++attempt) {
+            const std::string cycle_name =
+                max_pick_attempts == 1 ?
+                "ACTION_CYCLE" :
+                "ACTION_CYCLE_ATTEMPT_" + std::to_string(attempt);
+
+            cycle_success = run_pick_cycle(
+                arm,
+                gripper,
+                goal->tag_frame,
+                container_pose,
+                cycle_name,
+                goal_handle,
+                failed_grasp_verification);
+
+            if (cycle_success) {
+                break;
+            }
+
+            if (cancellationRequested() || goal_handle->is_canceling()) {
+                break;
+            }
+
+            if (!failed_grasp_verification || attempt >= max_pick_attempts) {
+                break;
+            }
+
+            speak("Vou abrir a garra e tentar pegar novamente");
+            publish_stage(goal_handle, "retrying_grasp");
+            RCLCPP_WARN(
+                this->get_logger(),
+                "Grasp verification failed on attempt %d/%d. Retrying pick.",
+                attempt,
+                max_pick_attempts);
+
+            arm->setStartStateToCurrentState();
+            arm->setEndEffectorLink("tcp");
+            arm->setNamedTarget("pegar_obj");
+            if (!planAndExecute(arm, "return pegar_obj before grasp retry")) {
+                finish_failure("Pick failed while preparing grasp retry");
+                return;
+            }
+
+            if (!sleepInterruptibly(std::chrono::milliseconds(500))) {
+                finish_failure("canceled before grasp retry");
+                return;
+            }
+        }
 
         if (cancellationRequested() || goal_handle->is_canceling()) {
             finish_failure("canceled during pick cycle");
