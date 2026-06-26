@@ -8,6 +8,6 @@ containers:
     tag_frame: ""
     status: empty
   container3:
-    occupied: true
-    tag_frame: tag_S40_40_G
-    status: filled
+    occupied: false
+    tag_frame: ""
+    status: empty

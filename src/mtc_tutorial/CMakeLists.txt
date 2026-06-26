@@ -105,12 +105,6 @@ install(DIRECTORY include/
 install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME})
 
-install(PROGRAMS
-  scripts/pick_telemetry_plotter.py
-  DESTINATION lib/${PROJECT_NAME}
-  RENAME pick_telemetry_plotter
-)
-
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
