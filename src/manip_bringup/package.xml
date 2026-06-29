@@ -14,7 +14,7 @@
   <exec_depend>controller_manager</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>rviz2</exec_depend>
-  <exec_depend>mtc_tutorial</exec_depend>
+  <exec_depend>manip_task_execution</exec_depend>
   <exec_depend>my_robot_msgs</exec_depend>
   <exec_depend>manip_audio</exec_depend>
 

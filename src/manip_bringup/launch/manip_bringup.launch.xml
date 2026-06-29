@@ -65,13 +65,13 @@
     <node pkg="manip_commander" exec="commmander"/>
 
             <group if="$(var launch_pick_action)">
-                  <node pkg="mtc_tutorial" exec="mtc_pick_action_node" output="screen">
+                  <node pkg="manip_task_execution" exec="mtc_pick_action_node" output="screen">
                         <param name="reset_container_states_on_start" value="$(var reset_container_states)"/>
                   </node>
             </group>
 
             <group if="$(var launch_place_action)">
-                  <node pkg="mtc_tutorial" exec="mtc_place_action_node" output="screen"/>
+                  <node pkg="manip_task_execution" exec="mtc_place_action_node" output="screen"/>
             </group>
 
 </launch>

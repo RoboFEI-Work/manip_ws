@@ -34,8 +34,8 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #endif
 
-#include "mtc_tutorial/container_state_store.hpp"
-#include "mtc_tutorial/manipulator_execution_lock.hpp"
+#include "manip_task_execution/container_state_store.hpp"
+#include "manip_task_execution/manipulator_execution_lock.hpp"
 #include "my_robot_msgs/action/pick_tag.hpp"
 
 namespace mtc = moveit::task_constructor;
@@ -54,7 +54,7 @@ public:
             "manipulator_lock_file",
             "/tmp/manip_ws_action.lock");
         execution_lock_ =
-            std::make_unique<mtc_tutorial::ManipulatorExecutionLock>(lock_file);
+            std::make_unique<manip_task_execution::ManipulatorExecutionLock>(lock_file);
         if (!execution_lock_->valid()) {
             throw std::runtime_error(
                 "Failed to open manipulator lock file '" + lock_file + "': " +
@@ -68,7 +68,7 @@ public:
         const bool reset_container_states_on_start =
             this->declare_parameter<bool>("reset_container_states_on_start", false);
         container_state_store_ =
-            std::make_unique<mtc_tutorial::ContainerStateStore>(container_state_file_);
+            std::make_unique<manip_task_execution::ContainerStateStore>(container_state_file_);
         if (reset_container_states_on_start) {
             std::string reset_error;
             if (!container_state_store_->resetAllEmpty(
@@ -298,6 +298,44 @@ public:
             this->declare_parameter<double>("grasp_effort_max_age", 0.4);
         grasp_retry_attempts_ =
             this->declare_parameter<int>("grasp_retry_attempts", 1);
+        switch_ik_after_failed_grasp_ =
+            this->declare_parameter<bool>("switch_ik_after_failed_grasp", true);
+        primary_ik_profile_.solver =
+            this->declare_parameter<std::string>(
+                "primary_ik_solver",
+                "pick_ik/PickIkPlugin");
+        fallback_ik_profile_.solver =
+            this->declare_parameter<std::string>(
+                "fallback_ik_solver",
+                "pick_ik/PickIkPlugin");
+        primary_ik_profile_.mode =
+            this->declare_parameter<std::string>("primary_ik_mode", "global");
+        fallback_ik_profile_.mode =
+            this->declare_parameter<std::string>("fallback_ik_mode", "local");
+        primary_ik_profile_.rotation_scale =
+            this->declare_parameter<double>("primary_ik_rotation_scale", 0.03);
+        fallback_ik_profile_.rotation_scale =
+            this->declare_parameter<double>("fallback_ik_rotation_scale", 0.01);
+        primary_ik_profile_.orientation_threshold =
+            this->declare_parameter<double>("primary_ik_orientation_threshold", 0.30);
+        fallback_ik_profile_.orientation_threshold =
+            this->declare_parameter<double>("fallback_ik_orientation_threshold", 0.60);
+        primary_ik_profile_.minimal_displacement_weight =
+            this->declare_parameter<double>(
+                "primary_ik_minimal_displacement_weight",
+                0.02);
+        fallback_ik_profile_.minimal_displacement_weight =
+            this->declare_parameter<double>(
+                "fallback_ik_minimal_displacement_weight",
+                0.20);
+        primary_ik_profile_.gd_step_size =
+            this->declare_parameter<double>("primary_ik_gd_step_size", 0.0008);
+        fallback_ik_profile_.gd_step_size =
+            this->declare_parameter<double>("fallback_ik_gd_step_size", 0.0015);
+        primary_ik_profile_.timeout =
+            this->declare_parameter<double>("primary_ik_timeout", 0.2);
+        fallback_ik_profile_.timeout =
+            this->declare_parameter<double>("fallback_ik_timeout", 0.5);
 
         effort_subscription_ =
             this->create_subscription<control_msgs::msg::DynamicJointState>(
@@ -351,9 +389,29 @@ private:
     double grasp_effort_sample_duration_{0.8};
     double grasp_effort_max_age_{0.4};
     int grasp_retry_attempts_{1};
+    bool switch_ik_after_failed_grasp_{true};
+    struct IkProfile
+    {
+        std::string solver{"pick_ik/PickIkPlugin"};
+        std::string mode{"global"};
+        double rotation_scale{0.03};
+        double orientation_threshold{0.30};
+        double minimal_displacement_weight{0.02};
+        double gd_step_size{0.0008};
+        double timeout{0.2};
+    };
+    IkProfile primary_ik_profile_;
+    IkProfile fallback_ik_profile_{
+        "pick_ik/PickIkPlugin",
+        "local",
+        0.01,
+        0.60,
+        0.20,
+        0.0015,
+        0.5};
     std::string container_state_file_;
-    std::unique_ptr<mtc_tutorial::ContainerStateStore> container_state_store_;
-    std::unique_ptr<mtc_tutorial::ManipulatorExecutionLock> execution_lock_;
+    std::unique_ptr<manip_task_execution::ContainerStateStore> container_state_store_;
+    std::unique_ptr<manip_task_execution::ManipulatorExecutionLock> execution_lock_;
     std::atomic_bool cancel_requested_{false};
     std::mutex active_interfaces_mutex_;
     std::shared_ptr<MoveGroupInterface> active_arm_;
@@ -421,6 +479,75 @@ private:
         std_msgs::msg::Bool message;
         message.data = active;
         pick_active_publisher_->publish(message);
+    }
+
+    void applyIkProfile(bool fallback_profile)
+    {
+        const std::string profile_name =
+            fallback_profile ? "fallback" : "primary";
+        const IkProfile & profile =
+            fallback_profile ? fallback_ik_profile_ : primary_ik_profile_;
+
+        const auto set_ik_params =
+            [this, &profile](const std::string & prefix)
+            {
+                this->set_parameter(
+                    rclcpp::Parameter(prefix + ".kinematics_solver", profile.solver));
+                this->set_parameter(
+                    rclcpp::Parameter(
+                        prefix + ".kinematics_solver_timeout",
+                        profile.timeout));
+                this->set_parameter(
+                    rclcpp::Parameter(prefix + ".mode", profile.mode));
+                this->set_parameter(
+                    rclcpp::Parameter(
+                        prefix + ".rotation_scale",
+                        profile.rotation_scale));
+                this->set_parameter(
+                    rclcpp::Parameter(
+                        prefix + ".orientation_threshold",
+                        profile.orientation_threshold));
+                this->set_parameter(
+                    rclcpp::Parameter(
+                        prefix + ".minimal_displacement_weight",
+                        profile.minimal_displacement_weight));
+                this->set_parameter(
+                    rclcpp::Parameter(prefix + ".gd_step_size", profile.gd_step_size));
+            };
+
+        set_ik_params("robot_description_kinematics.arm");
+        set_ik_params("arm");
+
+        RCLCPP_WARN(
+            this->get_logger(),
+            "Using %s IK profile: solver=%s mode=%s timeout=%.3f "
+            "rotation_scale=%.3f orientation_threshold=%.3f "
+            "minimal_displacement_weight=%.3f gd_step_size=%.4f",
+            profile_name.c_str(),
+            profile.solver.c_str(),
+            profile.mode.c_str(),
+            profile.timeout,
+            profile.rotation_scale,
+            profile.orientation_threshold,
+            profile.minimal_displacement_weight,
+            profile.gd_step_size);
+    }
+
+    void configureArmInterface(const std::shared_ptr<MoveGroupInterface> & arm)
+    {
+        arm->setPoseReferenceFrame("base_link");
+        arm->setPlanningTime(15.0);
+        arm->setNumPlanningAttempts(20);
+        arm->setMaxVelocityScalingFactor(1.0);
+        arm->setMaxAccelerationScalingFactor(1.0);
+    }
+
+    std::shared_ptr<MoveGroupInterface> createArmInterface(bool fallback_profile)
+    {
+        applyIkProfile(fallback_profile);
+        auto arm = std::make_shared<MoveGroupInterface>(shared_from_this(), "arm");
+        configureArmInterface(arm);
+        return arm;
     }
 
     void onDynamicJointState(
@@ -1188,15 +1315,10 @@ private:
             return;
         }
 
-        auto arm = std::make_shared<MoveGroupInterface>(shared_from_this(), "arm");
+        auto arm = createArmInterface(false);
         auto gripper = std::make_shared<MoveGroupInterface>(shared_from_this(), "gripper");
         setActiveInterfaces(arm, gripper);
 
-        arm->setPoseReferenceFrame("base_link");
-        arm->setPlanningTime(15.0);
-        arm->setNumPlanningAttempts(20);
-        arm->setMaxVelocityScalingFactor(1.0);
-        arm->setMaxAccelerationScalingFactor(1.0);
         gripper->setMaxVelocityScalingFactor(1.0);
         gripper->setMaxAccelerationScalingFactor(1.0);
 
@@ -1244,6 +1366,7 @@ private:
             grasp_retry_attempts_ < 0 ? 1 : grasp_retry_attempts_ + 1;
         bool cycle_success = false;
         bool failed_grasp_verification = false;
+        bool using_fallback_ik = false;
 
         for (int attempt = 1; attempt <= max_pick_attempts; ++attempt) {
             const std::string cycle_name =
@@ -1270,6 +1393,21 @@ private:
 
             if (!failed_grasp_verification || attempt >= max_pick_attempts) {
                 break;
+            }
+
+            if (switch_ik_after_failed_grasp_ &&
+                failed_grasp_verification &&
+                !using_fallback_ik &&
+                attempt < max_pick_attempts) {
+                publish_stage(goal_handle, "switching_ik_profile");
+                speak("Vou trocar o modelo de I K e tentar novamente");
+                RCLCPP_WARN(
+                    this->get_logger(),
+                    "Grasp verification failed. Switching to fallback IK "
+                    "profile before retry.");
+                arm = createArmInterface(true);
+                setActiveInterfaces(arm, gripper);
+                using_fallback_ik = true;
             }
 
             speak("Vou abrir a garra e tentar pegar novamente");

@@ -1,4 +1,4 @@
-#include "mtc_tutorial/container_state_store.hpp"
+#include "manip_task_execution/container_state_store.hpp"
 
 #include <yaml-cpp/yaml.h>
 
@@ -7,7 +7,7 @@
 #include <system_error>
 #include <vector>
 
-namespace mtc_tutorial
+namespace manip_task_execution
 {
 
 namespace
@@ -285,4 +285,4 @@ bool ContainerStateStore::updateContainer(
   }
 }
 
-}  // namespace mtc_tutorial
+}  // namespace manip_task_execution

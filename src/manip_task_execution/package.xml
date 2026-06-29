@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>mtc_tutorial</name>
+  <name>manip_task_execution</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Pick and place task execution nodes for the manipulator.</description>
   <maintainer email="robofei-work@todo.todo">robofei-work</maintainer>
   <license>TODO: License declaration</license>
 

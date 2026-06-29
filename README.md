@@ -14,7 +14,7 @@ Este workspace possui 9 pacotes principais:
 - `manip_commander`: nos C++ para enviar comandos ao MoveIt (ex.: `commmander`, `test_moveit`).
 - `manip_bt`: executor de Behavior Tree e tradutor YAML para sequencia de acoes (`pick`/`place`).
 - `manip_hardware`: interface de hardware `ros2_control` para os 7 motores Dynamixel XM540 (joints 1-5 do braco, joints 6-7 da garra).
-- `mtc_tutorial`: nos de manipulacao com MoveIt Task Constructor e action servers de pick/place.
+- `manip_task_execution`: nos de manipulacao com MoveIt Task Constructor e action servers de pick/place.
 - `my_robot_msgs`: interfaces ROS 2 customizadas (actions `PickTag` e `PlaceTag`).
 - `manip_audio`: sintese de voz para avisos e depuracao do manipulador.
 
@@ -35,8 +35,8 @@ Este workspace possui 9 pacotes principais:
 - `src/manip_commander/src/`: implementacao dos nos de comando.
 - `src/manip_hardware/include/manip_hardware/`: headers do driver XM540 e da interface de hardware.
 - `src/manip_hardware/src/arm_hardware_interface.cpp`: implementacao da interface de hardware.
-- `src/mtc_tutorial/src/mtc_pick_action_node.cpp`: action server `/pick_tag`.
-- `src/mtc_tutorial/src/mtc_place_action_node.cpp`: action server `/place_tag`.
+- `src/manip_task_execution/src/mtc_pick_action_node.cpp`: action server `/pick_tag`.
+- `src/manip_task_execution/src/mtc_place_action_node.cpp`: action server `/place_tag`.
 - `src/my_robot_msgs/action/PickTag.action`: definicao da action de pick por tag.
 - `src/my_robot_msgs/action/PlaceTag.action`: definicao da action de place por tag.
 
@@ -67,7 +67,7 @@ source install/setup.bash
 Build apenas dos pacotes do manip:
 
 ```bash
-colcon build --packages-select manip_description manip_moveit_config manip_bringup manip_commander manip_bt manip_hardware my_robot_msgs mtc_tutorial manip_audio
+colcon build --packages-select manip_description manip_moveit_config manip_bringup manip_commander manip_bt manip_hardware my_robot_msgs manip_task_execution manip_audio
 source install/setup.bash
 ```
 
@@ -286,12 +286,12 @@ trava local. O parametro abaixo deve ter o mesmo valor nos dois action servers:
 Exemplo ao iniciar os servidores manualmente:
 
 ```bash
-ros2 run mtc_tutorial mtc_pick_action_node --ros-args \
+ros2 run manip_task_execution mtc_pick_action_node --ros-args \
   -p manipulator_lock_file:=/tmp/manip_ws_action.lock
 ```
 
 ```bash
-ros2 run mtc_tutorial mtc_place_action_node --ros-args \
+ros2 run manip_task_execution mtc_place_action_node --ros-args \
   -p manipulator_lock_file:=/tmp/manip_ws_action.lock
 ```
 
@@ -759,7 +759,7 @@ Goal de pick/place rejeitado como `manipulator is busy`:
 
 Action permanece em movimento depois de uma tentativa de cancelamento:
 
-- Confirme que os executaveis instalados foram recompilados com `colcon build --packages-select mtc_tutorial`.
+- Confirme que os executaveis instalados foram recompilados com `colcon build --packages-select manip_task_execution`.
 - Execute `source install/setup.bash` no terminal do bringup.
 - Consulte os logs dos action servers para verificar `PICK cancellation requested`
   ou `PLACE cancellation requested`.

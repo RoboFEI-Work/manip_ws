@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-namespace mtc_tutorial
+namespace manip_task_execution
 {
 
 class ContainerStateStore
@@ -41,4 +41,4 @@ private:
   std::string file_path_;
 };
 
-}  // namespace mtc_tutorial
+}  // namespace manip_task_execution

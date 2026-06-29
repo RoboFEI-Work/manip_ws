@@ -9,7 +9,7 @@
 #include <cstring>
 #include <string>
 
-namespace mtc_tutorial
+namespace manip_task_execution
 {
 
 class ManipulatorExecutionLock
@@ -75,4 +75,4 @@ private:
   std::atomic_bool locally_acquired_{false};
 };
 
-}  // namespace mtc_tutorial
+}  // namespace manip_task_execution

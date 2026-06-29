@@ -27,8 +27,8 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #endif
 
-#include "mtc_tutorial/container_state_store.hpp"
-#include "mtc_tutorial/manipulator_execution_lock.hpp"
+#include "manip_task_execution/container_state_store.hpp"
+#include "manip_task_execution/manipulator_execution_lock.hpp"
 #include "my_robot_msgs/action/place_tag.hpp"
 
 class PlaceActionServer : public rclcpp::Node
@@ -51,7 +51,7 @@ public:
             "manipulator_lock_file",
             "/tmp/manip_ws_action.lock");
         execution_lock_ =
-            std::make_unique<mtc_tutorial::ManipulatorExecutionLock>(lock_file);
+            std::make_unique<manip_task_execution::ManipulatorExecutionLock>(lock_file);
         if (!execution_lock_->valid()) {
             throw std::runtime_error(
                 "Failed to open manipulator lock file '" + lock_file + "': " +
@@ -65,7 +65,7 @@ public:
         container_place_z_offset_ =
             this->declare_parameter<double>("container_place_z_offset", 0.06);
         container_state_store_ =
-            std::make_unique<mtc_tutorial::ContainerStateStore>(container_state_file_);
+            std::make_unique<manip_task_execution::ContainerStateStore>(container_state_file_);
         declarePlanningDefaults();
 
         tf_buffer_ =
@@ -108,11 +108,11 @@ private:
     rclcpp_action::Server<PlaceTag>::SharedPtr
         action_server_;
     std::string container_state_file_;
-    std::unique_ptr<mtc_tutorial::ContainerStateStore> container_state_store_;
+    std::unique_ptr<manip_task_execution::ContainerStateStore> container_state_store_;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
     double container_place_z_offset_;
-    std::unique_ptr<mtc_tutorial::ManipulatorExecutionLock> execution_lock_;
+    std::unique_ptr<manip_task_execution::ManipulatorExecutionLock> execution_lock_;
     std::atomic_bool cancel_requested_{false};
     std::mutex active_interfaces_mutex_;
     std::shared_ptr<MoveGroupInterface> active_arm_;
