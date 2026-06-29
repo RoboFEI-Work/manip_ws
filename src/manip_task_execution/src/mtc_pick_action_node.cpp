@@ -20,6 +20,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -336,6 +337,16 @@ public:
             this->declare_parameter<double>("primary_ik_timeout", 0.2);
         fallback_ik_profile_.timeout =
             this->declare_parameter<double>("fallback_ik_timeout", 0.5);
+        use_visual_pick_fallback_ =
+            this->declare_parameter<bool>("use_visual_pick_fallback", true);
+        visual_pick_action_name_ =
+            this->declare_parameter<std::string>(
+                "visual_pick_action_name",
+                "/pick_tag_recovery");
+        visual_pick_server_timeout_ =
+            this->declare_parameter<double>("visual_pick_server_timeout", 1.0);
+        visual_pick_result_timeout_ =
+            this->declare_parameter<double>("visual_pick_result_timeout", 45.0);
 
         effort_subscription_ =
             this->create_subscription<control_msgs::msg::DynamicJointState>(
@@ -409,6 +420,11 @@ private:
         0.20,
         0.0015,
         0.5};
+    bool use_visual_pick_fallback_{true};
+    std::string visual_pick_action_name_{"/pick_tag_recovery"};
+    double visual_pick_server_timeout_{1.0};
+    double visual_pick_result_timeout_{45.0};
+    rclcpp_action::Client<PickTag>::SharedPtr visual_pick_client_;
     std::string container_state_file_;
     std::unique_ptr<manip_task_execution::ContainerStateStore> container_state_store_;
     std::unique_ptr<manip_task_execution::ManipulatorExecutionLock> execution_lock_;
@@ -1091,6 +1107,150 @@ private:
         return true;
     }
 
+    bool transferGraspedObjectToContainer(
+        const std::shared_ptr<MoveGroupInterface> & arm,
+        const std::shared_ptr<MoveGroupInterface> & gripper,
+        const std::string & container_pose,
+        const std::string & cycle_name,
+        const std::shared_ptr<GoalHandlePickTag> & goal_handle)
+    {
+        publish_stage(goal_handle, "returning_to_pegar_obj");
+        arm->setStartStateToCurrentState();
+        arm->setEndEffectorLink("tcp");
+        arm->setNamedTarget("pegar_obj");
+        if (!planAndExecute(arm, cycle_name + " return pegar_obj")) {
+            return false;
+        }
+
+        publish_stage(goal_handle, "going_pre_container");
+        arm->setStartStateToCurrentState();
+        arm->setEndEffectorLink("tcp");
+        arm->setNamedTarget("pre_container");
+        if (!planAndExecute(arm, cycle_name + " pre_container")) {
+            return false;
+        }
+
+        publish_stage(goal_handle, "going_container");
+        arm->setStartStateToCurrentState();
+        arm->setNamedTarget(container_pose);
+        if (!planAndExecute(arm, cycle_name + " " + container_pose)) {
+            return false;
+        }
+
+        publish_stage(goal_handle, "opening_gripper");
+        gripper->setStartStateToCurrentState();
+        gripper->setNamedTarget("gripper_open");
+        if (!planAndExecute(gripper, cycle_name + " open gripper")) {
+            return false;
+        }
+
+        publish_stage(goal_handle, "going pre_container_final");
+        arm->setStartStateToCurrentState();
+        arm->setEndEffectorLink("tcp");
+        arm->setNamedTarget("pre_container");
+        return planAndExecute(arm, cycle_name + " pre_container final");
+    }
+
+    bool runVisualPickFallback(
+        const std::shared_ptr<MoveGroupInterface> & arm,
+        const std::shared_ptr<MoveGroupInterface> & gripper,
+        const std::string & tag_frame,
+        const std::string & container_pose,
+        const std::shared_ptr<GoalHandlePickTag> & goal_handle)
+    {
+        if (!use_visual_pick_fallback_) {
+            return false;
+        }
+
+        if (!visual_pick_client_) {
+            visual_pick_client_ =
+                rclcpp_action::create_client<PickTag>(
+                    shared_from_this(),
+                    visual_pick_action_name_);
+        }
+
+        publish_stage(goal_handle, "visual_pick_fallback_waiting_server");
+        if (!visual_pick_client_->wait_for_action_server(
+                std::chrono::duration<double>(visual_pick_server_timeout_))) {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "Visual pick fallback server %s is not available",
+                visual_pick_action_name_.c_str());
+            return false;
+        }
+
+        if (cancellationRequested() || goal_handle->is_canceling()) {
+            return false;
+        }
+
+        publish_stage(goal_handle, "visual_pick_fallback");
+        speak("Vou tentar pegar usando a recuperacao visual");
+
+        PickTag::Goal recovery_goal;
+        recovery_goal.tag_frame = tag_frame;
+        auto goal_future = visual_pick_client_->async_send_goal(recovery_goal);
+
+        const auto goal_deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (goal_future.wait_for(std::chrono::milliseconds(50)) !=
+            std::future_status::ready) {
+            if (cancellationRequested() || goal_handle->is_canceling()) {
+                return false;
+            }
+            if (std::chrono::steady_clock::now() >= goal_deadline) {
+                RCLCPP_WARN(this->get_logger(), "Visual pick fallback goal timed out");
+                return false;
+            }
+        }
+
+        auto recovery_goal_handle = goal_future.get();
+        if (!recovery_goal_handle) {
+            RCLCPP_WARN(this->get_logger(), "Visual pick fallback goal was rejected");
+            return false;
+        }
+
+        auto result_future =
+            visual_pick_client_->async_get_result(recovery_goal_handle);
+        const auto result_deadline =
+            std::chrono::steady_clock::now() +
+            std::chrono::duration<double>(visual_pick_result_timeout_);
+        while (result_future.wait_for(std::chrono::milliseconds(100)) !=
+            std::future_status::ready) {
+            if (cancellationRequested() || goal_handle->is_canceling()) {
+                visual_pick_client_->async_cancel_goal(recovery_goal_handle);
+                return false;
+            }
+            if (std::chrono::steady_clock::now() >= result_deadline) {
+                RCLCPP_WARN(this->get_logger(), "Visual pick fallback result timed out");
+                visual_pick_client_->async_cancel_goal(recovery_goal_handle);
+                return false;
+            }
+        }
+
+        const auto wrapped_result = result_future.get();
+        if (wrapped_result.code != rclcpp_action::ResultCode::SUCCEEDED ||
+            !wrapped_result.result ||
+            !wrapped_result.result->success) {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "Visual pick fallback failed: %s",
+                wrapped_result.result ?
+                wrapped_result.result->message.c_str() :
+                "<empty result>");
+            return false;
+        }
+
+        RCLCPP_WARN(
+            this->get_logger(),
+            "Visual pick fallback grasped the block. Finishing normal pick flow.");
+        return transferGraspedObjectToContainer(
+            arm,
+            gripper,
+            container_pose,
+            "VISUAL_PICK_FALLBACK",
+            goal_handle);
+    }
+
     bool run_pick_cycle(
         const std::shared_ptr<MoveGroupInterface> & arm,
         const std::shared_ptr<MoveGroupInterface> & gripper,
@@ -1238,46 +1398,12 @@ private:
             speak("Bloco confirmado pela força da garra");
         }
 
-        publish_stage(goal_handle, "returning_to_pegar_obj");
-        arm->setStartStateToCurrentState();
-        arm->setEndEffectorLink("tcp");
-        arm->setNamedTarget("pegar_obj");
-        if (!planAndExecute(arm, cycle_name + " return pegar_obj")) {
-            return false;
-        }
-
-        publish_stage(goal_handle, "going_pre_container");
-        arm->setStartStateToCurrentState();
-        arm->setEndEffectorLink("tcp");
-        arm->setNamedTarget("pre_container");
-        if (!planAndExecute(arm, cycle_name + " pre_container")) {
-            return false;
-        }
-
-        publish_stage(goal_handle, "going_container");
-        arm->setStartStateToCurrentState();
-        arm->setNamedTarget(container_pose);
-        if (!planAndExecute(arm, cycle_name + " " + container_pose)) {
-            return false;
-        }
-
-        publish_stage(goal_handle, "opening_gripper");
-        gripper->setStartStateToCurrentState();
-        gripper->setNamedTarget("gripper_open");
-        if (!planAndExecute(gripper, cycle_name + " open gripper")) {
-            return false;
-        }
-
-        publish_stage(goal_handle, "going pre_container_final");
-        arm->setStartStateToCurrentState();
-        arm->setEndEffectorLink("tcp");
-        arm->setNamedTarget("pre_container");
-        if (!planAndExecute(arm, cycle_name + " pre_container final")) {
-            return false;
-        }
-
-
-        return true;
+        return transferGraspedObjectToContainer(
+            arm,
+            gripper,
+            container_pose,
+            cycle_name,
+            goal_handle);
     }
 
     void execute(const std::shared_ptr<GoalHandlePickTag> goal_handle)
@@ -1434,6 +1560,20 @@ private:
 
         if (cancellationRequested() || goal_handle->is_canceling()) {
             finish_failure("canceled during pick cycle");
+            return;
+        }
+
+        if (!cycle_success && failed_grasp_verification) {
+            cycle_success = runVisualPickFallback(
+                arm,
+                gripper,
+                goal->tag_frame,
+                container_pose,
+                goal_handle);
+        }
+
+        if (cancellationRequested() || goal_handle->is_canceling()) {
+            finish_failure("canceled during visual pick fallback");
             return;
         }
 

@@ -11,6 +11,7 @@
             <arg name="launch_realsense" default="true"/>
             <arg name="launch_apriltag" default="true"/>
             <arg name="launch_pick_action" default="true"/>
+            <arg name="launch_pick_recovery" default="false"/>
             <arg name="launch_place_action" default="true"/>
             <arg name="launch_speech" default="true"/>
             <arg name="piper_executable" default="$(env HOME)/piper/piper"/>
@@ -22,6 +23,14 @@
             <arg name="switch_ik_after_failed_grasp" default="true"/>
             <arg name="fallback_ik_solver" default="pick_ik/PickIkPlugin"/>
             <arg name="fallback_ik_mode" default="local"/>
+            <arg name="visual_pick_action_name" default="/pick_tag_recovery"/>
+            <arg name="pick_recovery_devicename" default="/dev/ttyUSB0"/>
+            <arg name="pick_recovery_baudrate" default="1000000"/>
+            <arg name="pick_recovery_image_topic" default="/camera/camera/color/image_raw"/>
+            <arg name="pick_recovery_apriltag_detections_topic" default="/detections"/>
+            <arg name="pick_recovery_arm_controller_action" default="/arm_controller/follow_joint_trajectory"/>
+            <arg name="pick_recovery_gripper_controller_action" default="/gripper_controller/follow_joint_trajectory"/>
+            <arg name="pick_recovery_joint_state_topic" default="/joint_states"/>
             <arg name="reset_container_states" default="true"/>
             <arg name="apriltag_params_file" default="$(env HOME)/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml"/>
 
@@ -87,6 +96,22 @@
                   <node pkg="manip_task_execution" exec="pick_telemetry_plotter" output="screen"/>
             </group>
 
+            <group if="$(var launch_pick_recovery)">
+                  <node pkg="manip_task_execution" exec="pick_recovery_action_node.py" output="screen">
+                        <param name="devicename" value="$(var pick_recovery_devicename)"/>
+                        <param name="baudrate" value="$(var pick_recovery_baudrate)"/>
+                        <param name="use_ros2_control" value="true"/>
+                        <param name="arm_controller_action" value="$(var pick_recovery_arm_controller_action)"/>
+                        <param name="gripper_controller_action" value="$(var pick_recovery_gripper_controller_action)"/>
+                        <param name="joint_state_topic" value="$(var pick_recovery_joint_state_topic)"/>
+                        <param name="image_topic" value="$(var pick_recovery_image_topic)"/>
+                        <param name="apriltag_detections_topic" value="$(var pick_recovery_apriltag_detections_topic)"/>
+                        <param name="max_detection_age_sec" value="0.5"/>
+                        <param name="use_ros_image" value="true"/>
+                        <param name="show_debug_window" value="false"/>
+                  </node>
+            </group>
+
             <group if="$(var launch_pick_action)">
                   <node pkg="manip_task_execution" exec="mtc_pick_action_node" output="screen">
                         <param name="reset_container_states_on_start" value="$(var reset_container_states)"/>
@@ -96,6 +121,8 @@
                         <param name="switch_ik_after_failed_grasp" value="$(var switch_ik_after_failed_grasp)"/>
                         <param name="fallback_ik_solver" value="$(var fallback_ik_solver)"/>
                         <param name="fallback_ik_mode" value="$(var fallback_ik_mode)"/>
+                        <param name="use_visual_pick_fallback" value="$(var launch_pick_recovery)"/>
+                        <param name="visual_pick_action_name" value="$(var visual_pick_action_name)"/>
                   </node>
             </group>
 

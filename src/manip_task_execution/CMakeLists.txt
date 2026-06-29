@@ -72,6 +72,14 @@ install(
   DESTINATION lib/${PROJECT_NAME}
 )
 
+install(
+  PROGRAMS
+    src/pick_recovery_action_node.py
+    src/pick_galera.py
+    src/varredura.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(DIRECTORY include/
   DESTINATION include/${PROJECT_NAME})
 
