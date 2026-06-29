@@ -1,8 +1,8 @@
 containers:
   container1:
-    occupied: true
-    tag_frame: tag_F20_20_B
-    status: filled
+    occupied: false
+    tag_frame: ""
+    status: empty
   container2:
     occupied: false
     tag_frame: ""

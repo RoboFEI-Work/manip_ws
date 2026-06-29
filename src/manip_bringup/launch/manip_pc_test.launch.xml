@@ -13,6 +13,8 @@
             <arg name="launch_pick_action" default="true"/>
             <arg name="launch_place_action" default="true"/>
             <arg name="launch_speech" default="true"/>
+            <arg name="piper_executable" default="$(env HOME)/piper/piper"/>
+            <arg name="piper_model" default="$(find-pkg-share manip_audio)/models/pt_BR-jeff/pt_BR-jeff-medium.onnx"/>
             <arg name="launch_pick_telemetry" default="true"/>
             <arg name="verify_grasp_effort" default="false"/>
             <arg name="grasp_min_effort_nm" default="0.15"/>
@@ -70,7 +72,12 @@
     <node pkg="manip_commander" exec="commmander"/>
 
             <group if="$(var launch_speech)">
-                  <node pkg="manip_audio" exec="speech_node" output="screen"/>
+                  <node pkg="manip_audio" exec="speech_node" output="screen">
+                        <param name="backend" value="piper"/>
+                        <param name="piper_executable" value="$(var piper_executable)"/>
+                        <param name="piper_model" value="$(var piper_model)"/>
+                        <param name="voice_effect" value="dog"/>
+                  </node>
             </group>
 
             <group if="$(var launch_pick_telemetry)">

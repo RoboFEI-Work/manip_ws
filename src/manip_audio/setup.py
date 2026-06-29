@@ -1,3 +1,5 @@
+from glob import glob
+
 from setuptools import find_packages, setup
 
 
@@ -14,6 +16,10 @@ setup(
             ['resource/' + package_name],
         ),
         ('share/' + package_name, ['package.xml']),
+        (
+            'share/' + package_name + '/models/pt_BR-jeff',
+            glob('models/pt_BR-jeff/*'),
+        ),
     ],
     install_requires=['setuptools'],
     tests_require=['pytest'],

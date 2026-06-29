@@ -34,3 +34,88 @@ def test_speech_command_uses_smoother_espeak_settings():
         '-z',
         'Teste de voz',
     ]
+
+
+def test_piper_command_uses_configured_model():
+    node = speech_node.SpeechNode.__new__(speech_node.SpeechNode)
+    node._piper_executable = 'piper'
+    node._piper_model = '/tmp/pt_BR-model.onnx'
+
+    command = node._piper_command('/tmp/voice.wav')
+
+    assert command == [
+        'piper',
+        '--model', '/tmp/pt_BR-model.onnx',
+        '--output_file', '/tmp/voice.wav',
+    ]
+
+
+def test_cartoon_dog_effect_adds_ffplay_audio_filter():
+    node = speech_node.SpeechNode.__new__(speech_node.SpeechNode)
+    node._player_executable = 'ffplay'
+    node._voice_effect = 'cartoon_dog'
+    node._effect_sample_rate = 22050
+
+    command = node._play_audio_command('/tmp/voice.wav')
+
+    assert command == [
+        'ffplay',
+        '-nodisp',
+        '-autoexit',
+        '-loglevel',
+        'error',
+        '-af',
+        (
+            'asetrate=22050*0.82,aresample=22050,atempo=1.12,'
+            'tremolo=f=7:d=0.18,vibrato=f=5:d=0.15'
+        ),
+        '/tmp/voice.wav',
+    ]
+
+
+def test_dog_effect_adds_subtle_ffplay_audio_filter():
+    node = speech_node.SpeechNode.__new__(speech_node.SpeechNode)
+    node._player_executable = 'ffplay'
+    node._voice_effect = 'dog'
+    node._effect_sample_rate = 22050
+
+    command = node._play_audio_command('/tmp/voice.wav')
+
+    assert command == [
+        'ffplay',
+        '-nodisp',
+        '-autoexit',
+        '-loglevel',
+        'error',
+        '-af',
+        (
+            'asetrate=22050*0.94,aresample=22050,atempo=1.04,'
+            'vibrato=f=4:d=0.04,'
+            'volume=1.05'
+        ),
+        '/tmp/voice.wav',
+    ]
+
+
+def test_dog_deep_effect_adds_deeper_ffplay_audio_filter():
+    node = speech_node.SpeechNode.__new__(speech_node.SpeechNode)
+    node._player_executable = 'ffplay'
+    node._voice_effect = 'dog_deep'
+    node._effect_sample_rate = 22050
+
+    command = node._play_audio_command('/tmp/voice.wav')
+
+    assert command == [
+        'ffplay',
+        '-nodisp',
+        '-autoexit',
+        '-loglevel',
+        'error',
+        '-af',
+        (
+            'asetrate=22050*0.82,aresample=22050,atempo=1.10,'
+            'vibrato=f=5:d=0.08,'
+            'volume=1.10'
+        ),
+        '/tmp/voice.wav',
+    ]
