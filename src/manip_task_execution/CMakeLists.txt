@@ -58,6 +58,7 @@ ament_target_dependencies(
   "my_robot_msgs"
   "rclcpp"
   "rclcpp_action"
+  "std_msgs"
   "tf2"
   "tf2_ros"
   "tf2_geometry_msgs"
@@ -83,8 +84,10 @@ install(
 install(DIRECTORY include/
   DESTINATION include/${PROJECT_NAME})
 
-install(DIRECTORY launch
-  DESTINATION share/${PROJECT_NAME})
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/launch")
+  install(DIRECTORY launch
+    DESTINATION share/${PROJECT_NAME})
+endif()
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

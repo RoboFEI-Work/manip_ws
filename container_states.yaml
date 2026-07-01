@@ -1,12 +1,12 @@
 containers:
   container1:
-    occupied: false
-    tag_frame: ""
-    status: empty
+    occupied: true
+    tag_frame: tag_1
+    status: filled
   container2:
-    occupied: false
-    tag_frame: ""
-    status: empty
+    occupied: true
+    tag_frame: tag_2
+    status: filled
   container3:
     occupied: false
     tag_frame: ""

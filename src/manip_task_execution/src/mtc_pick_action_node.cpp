@@ -298,45 +298,79 @@ public:
         grasp_effort_max_age_ =
             this->declare_parameter<double>("grasp_effort_max_age", 0.4);
         grasp_retry_attempts_ =
-            this->declare_parameter<int>("grasp_retry_attempts", 1);
+            this->declare_parameter<int>("grasp_retry_attempts", 2);
         switch_ik_after_failed_grasp_ =
             this->declare_parameter<bool>("switch_ik_after_failed_grasp", true);
         primary_ik_profile_.solver =
             this->declare_parameter<std::string>(
-                "primary_ik_solver",
+                "attempt_1_ik_solver",
                 "pick_ik/PickIkPlugin");
-        fallback_ik_profile_.solver =
+        second_ik_profile_.solver =
             this->declare_parameter<std::string>(
-                "fallback_ik_solver",
-                "pick_ik/PickIkPlugin");
+                "attempt_2_ik_solver",
+                "kdl_kinematics_plugin/KDLKinematicsPlugin");
+        third_ik_profile_.solver =
+            this->declare_parameter<std::string>(
+                "attempt_3_ik_solver",
+                "trac_ik_kinematics_plugin/TRAC_IKKinematicsPlugin");
+        fallback_ik_profile_.solver = third_ik_profile_.solver;
+        this->declare_parameter<std::string>(
+            "primary_ik_solver",
+            primary_ik_profile_.solver);
+        this->declare_parameter<std::string>(
+            "fallback_ik_solver",
+            fallback_ik_profile_.solver);
         primary_ik_profile_.mode =
-            this->declare_parameter<std::string>("primary_ik_mode", "global");
-        fallback_ik_profile_.mode =
-            this->declare_parameter<std::string>("fallback_ik_mode", "local");
+            this->declare_parameter<std::string>("attempt_1_ik_mode", "global");
+        second_ik_profile_.mode =
+            this->declare_parameter<std::string>("attempt_2_ik_mode", "global");
+        third_ik_profile_.mode =
+            this->declare_parameter<std::string>("attempt_3_ik_mode", "Speed");
+        fallback_ik_profile_.mode = third_ik_profile_.mode;
+        this->declare_parameter<std::string>("primary_ik_mode", primary_ik_profile_.mode);
+        this->declare_parameter<std::string>("fallback_ik_mode", fallback_ik_profile_.mode);
         primary_ik_profile_.rotation_scale =
-            this->declare_parameter<double>("primary_ik_rotation_scale", 0.03);
-        fallback_ik_profile_.rotation_scale =
-            this->declare_parameter<double>("fallback_ik_rotation_scale", 0.01);
+            this->declare_parameter<double>("attempt_1_ik_rotation_scale", 0.03);
+        second_ik_profile_.rotation_scale =
+            this->declare_parameter<double>("attempt_2_ik_rotation_scale", 0.03);
+        third_ik_profile_.rotation_scale =
+            this->declare_parameter<double>("attempt_3_ik_rotation_scale", 0.01);
+        fallback_ik_profile_.rotation_scale = third_ik_profile_.rotation_scale;
         primary_ik_profile_.orientation_threshold =
-            this->declare_parameter<double>("primary_ik_orientation_threshold", 0.30);
-        fallback_ik_profile_.orientation_threshold =
-            this->declare_parameter<double>("fallback_ik_orientation_threshold", 0.60);
+            this->declare_parameter<double>("attempt_1_ik_orientation_threshold", 0.30);
+        second_ik_profile_.orientation_threshold =
+            this->declare_parameter<double>("attempt_2_ik_orientation_threshold", 0.30);
+        third_ik_profile_.orientation_threshold =
+            this->declare_parameter<double>("attempt_3_ik_orientation_threshold", 0.60);
+        fallback_ik_profile_.orientation_threshold = third_ik_profile_.orientation_threshold;
         primary_ik_profile_.minimal_displacement_weight =
             this->declare_parameter<double>(
-                "primary_ik_minimal_displacement_weight",
+                "attempt_1_ik_minimal_displacement_weight",
                 0.02);
-        fallback_ik_profile_.minimal_displacement_weight =
+        second_ik_profile_.minimal_displacement_weight =
             this->declare_parameter<double>(
-                "fallback_ik_minimal_displacement_weight",
+                "attempt_2_ik_minimal_displacement_weight",
+                0.02);
+        third_ik_profile_.minimal_displacement_weight =
+            this->declare_parameter<double>(
+                "attempt_3_ik_minimal_displacement_weight",
                 0.20);
+        fallback_ik_profile_.minimal_displacement_weight =
+            third_ik_profile_.minimal_displacement_weight;
         primary_ik_profile_.gd_step_size =
-            this->declare_parameter<double>("primary_ik_gd_step_size", 0.0008);
-        fallback_ik_profile_.gd_step_size =
-            this->declare_parameter<double>("fallback_ik_gd_step_size", 0.0015);
+            this->declare_parameter<double>("attempt_1_ik_gd_step_size", 0.0008);
+        second_ik_profile_.gd_step_size =
+            this->declare_parameter<double>("attempt_2_ik_gd_step_size", 0.0008);
+        third_ik_profile_.gd_step_size =
+            this->declare_parameter<double>("attempt_3_ik_gd_step_size", 0.0015);
+        fallback_ik_profile_.gd_step_size = third_ik_profile_.gd_step_size;
         primary_ik_profile_.timeout =
-            this->declare_parameter<double>("primary_ik_timeout", 0.2);
-        fallback_ik_profile_.timeout =
-            this->declare_parameter<double>("fallback_ik_timeout", 0.5);
+            this->declare_parameter<double>("attempt_1_ik_timeout", 0.2);
+        second_ik_profile_.timeout =
+            this->declare_parameter<double>("attempt_2_ik_timeout", 0.4);
+        third_ik_profile_.timeout =
+            this->declare_parameter<double>("attempt_3_ik_timeout", 0.5);
+        fallback_ik_profile_.timeout = third_ik_profile_.timeout;
         use_visual_pick_fallback_ =
             this->declare_parameter<bool>("use_visual_pick_fallback", true);
         visual_pick_action_name_ =
@@ -347,6 +381,8 @@ public:
             this->declare_parameter<double>("visual_pick_server_timeout", 1.0);
         visual_pick_result_timeout_ =
             this->declare_parameter<double>("visual_pick_result_timeout", 45.0);
+        use_camera_alignment_retry_ =
+            this->declare_parameter<bool>("use_camera_alignment_retry", true);
 
         effort_subscription_ =
             this->create_subscription<control_msgs::msg::DynamicJointState>(
@@ -399,7 +435,7 @@ private:
     double grasp_min_effort_increase_nm_{0.05};
     double grasp_effort_sample_duration_{0.8};
     double grasp_effort_max_age_{0.4};
-    int grasp_retry_attempts_{1};
+    int grasp_retry_attempts_{2};
     bool switch_ik_after_failed_grasp_{true};
     struct IkProfile
     {
@@ -412,15 +448,32 @@ private:
         double timeout{0.2};
     };
     IkProfile primary_ik_profile_;
+    IkProfile second_ik_profile_{
+        "kdl_kinematics_plugin/KDLKinematicsPlugin",
+        "global",
+        0.03,
+        0.30,
+        0.02,
+        0.0008,
+        0.4};
+    IkProfile third_ik_profile_{
+        "trac_ik_kinematics_plugin/TRAC_IKKinematicsPlugin",
+        "Speed",
+        0.01,
+        0.60,
+        0.20,
+        0.0015,
+        0.5};
     IkProfile fallback_ik_profile_{
-        "pick_ik/PickIkPlugin",
-        "local",
+        "trac_ik_kinematics_plugin/TRAC_IKKinematicsPlugin",
+        "Speed",
         0.01,
         0.60,
         0.20,
         0.0015,
         0.5};
     bool use_visual_pick_fallback_{true};
+    bool use_camera_alignment_retry_{true};
     std::string visual_pick_action_name_{"/pick_tag_recovery"};
     double visual_pick_server_timeout_{1.0};
     double visual_pick_result_timeout_{45.0};
@@ -497,13 +550,8 @@ private:
         pick_active_publisher_->publish(message);
     }
 
-    void applyIkProfile(bool fallback_profile)
+    void applyIkProfile(const IkProfile & profile, const std::string & profile_name)
     {
-        const std::string profile_name =
-            fallback_profile ? "fallback" : "primary";
-        const IkProfile & profile =
-            fallback_profile ? fallback_ik_profile_ : primary_ik_profile_;
-
         const auto set_ik_params =
             [this, &profile](const std::string & prefix)
             {
@@ -549,6 +597,22 @@ private:
             profile.gd_step_size);
     }
 
+    const IkProfile & ikProfileForAttempt(int attempt) const
+    {
+        if (attempt <= 1) {
+            return primary_ik_profile_;
+        }
+        if (attempt == 2) {
+            return second_ik_profile_;
+        }
+        return third_ik_profile_;
+    }
+
+    std::string ikProfileNameForAttempt(int attempt) const
+    {
+        return "attempt_" + std::to_string(attempt);
+    }
+
     void configureArmInterface(const std::shared_ptr<MoveGroupInterface> & arm)
     {
         arm->setPoseReferenceFrame("base_link");
@@ -560,7 +624,17 @@ private:
 
     std::shared_ptr<MoveGroupInterface> createArmInterface(bool fallback_profile)
     {
-        applyIkProfile(fallback_profile);
+        applyIkProfile(
+            fallback_profile ? fallback_ik_profile_ : primary_ik_profile_,
+            fallback_profile ? "fallback" : "primary");
+        auto arm = std::make_shared<MoveGroupInterface>(shared_from_this(), "arm");
+        configureArmInterface(arm);
+        return arm;
+    }
+
+    std::shared_ptr<MoveGroupInterface> createArmInterfaceForAttempt(int attempt)
+    {
+        applyIkProfile(ikProfileForAttempt(attempt), ikProfileNameForAttempt(attempt));
         auto arm = std::make_shared<MoveGroupInterface>(shared_from_this(), "arm");
         configureArmInterface(arm);
         return arm;
@@ -1115,6 +1189,7 @@ private:
         const std::shared_ptr<GoalHandlePickTag> & goal_handle)
     {
         publish_stage(goal_handle, "returning_to_pegar_obj");
+        speak("Bloco seguro. Voltando para a pose de transporte");
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink("tcp");
         arm->setNamedTarget("pegar_obj");
@@ -1123,6 +1198,7 @@ private:
         }
 
         publish_stage(goal_handle, "going_pre_container");
+        //speak("Indo para a pre pose do container");
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink("tcp");
         arm->setNamedTarget("pre_container");
@@ -1131,6 +1207,7 @@ private:
         }
 
         publish_stage(goal_handle, "going_container");
+        speak("Levando o bloco para o " + container_pose);
         arm->setStartStateToCurrentState();
         arm->setNamedTarget(container_pose);
         if (!planAndExecute(arm, cycle_name + " " + container_pose)) {
@@ -1138,6 +1215,7 @@ private:
         }
 
         publish_stage(goal_handle, "opening_gripper");
+        //speak("Abrindo a garra para soltar o bloco");
         gripper->setStartStateToCurrentState();
         gripper->setNamedTarget("gripper_open");
         if (!planAndExecute(gripper, cycle_name + " open gripper")) {
@@ -1145,10 +1223,96 @@ private:
         }
 
         publish_stage(goal_handle, "going pre_container_final");
+        //speak("Saindo do container");
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink("tcp");
         arm->setNamedTarget("pre_container");
         return planAndExecute(arm, cycle_name + " pre_container final");
+    }
+
+    bool alignCameraToTagXY(
+        const std::shared_ptr<MoveGroupInterface> & arm,
+        const std::string & tag_frame,
+        const std::shared_ptr<GoalHandlePickTag> & goal_handle,
+        const std::string & cycle_name)
+    {
+        publish_stage(goal_handle, "camera_xy_alignment");
+        speak("Alinhando a camera em X e Y pela tag " + spokenTagName(tag_frame));
+
+        geometry_msgs::msg::TransformStamped tag_tf;
+        if (!waitForTagTransform(
+                "base_link",
+                tag_frame,
+                tag_tf,
+                std::chrono::milliseconds(5000),
+                std::chrono::milliseconds(200),
+                cycle_name + " camera_xy_alignment")) {
+            speak("Nao consegui alinhar a camera porque nao encontrei a tag");
+            return false;
+        }
+
+        constexpr double kTagXNearZero = 0.1;
+        constexpr double kTagYNearZero = 0.4;
+        const double tag_x = tag_tf.transform.translation.x;
+        const double tag_y = tag_tf.transform.translation.y;
+
+        std::string target;
+        if (std::abs(tag_x) > kTagXNearZero) {
+            if (tag_x > 0.0) {
+                target = std::abs(tag_y) > kTagYNearZero ?
+                    "tag_direita_cima" :
+                    "tag_direita";
+            } else {
+                target = std::abs(tag_y) > kTagYNearZero ?
+                    "tag_esquerda_cima" :
+                    "tag_esquerda";
+            }
+        } else if (std::abs(tag_y) > kTagYNearZero) {
+            target = "tag_cima";
+        }
+
+        if (target.empty()) {
+            speak("A camera ja esta alinhada com a tag");
+            return true;
+        }
+
+        arm->setStartStateToCurrentState();
+        arm->setEndEffectorLink("tcp");
+        arm->setNamedTarget(target);
+        if (!planAndExecute(arm, cycle_name + " " + target)) {
+            speak("Falhei ao alinhar a camera com a tag");
+            return false;
+        }
+
+        return sleepInterruptibly(std::chrono::milliseconds(1000));
+    }
+
+    bool runCameraAlignmentRetry(
+        std::shared_ptr<MoveGroupInterface> & arm,
+        const std::shared_ptr<MoveGroupInterface> & gripper,
+        const std::string & tag_frame,
+        const std::string & container_pose,
+        const std::shared_ptr<GoalHandlePickTag> & goal_handle)
+    {
+        if (!use_camera_alignment_retry_) {
+            return false;
+        }
+
+        publish_stage(goal_handle, "camera_alignment_retry");
+        speak("Vou realinhar a camera e tentar novamente com a primeira I K");
+
+        arm = createArmInterface(false);
+        setActiveInterfaces(arm, gripper);
+
+        bool failed_grasp_verification = false;
+        return run_pick_cycle(
+            arm,
+            gripper,
+            tag_frame,
+            container_pose,
+            "CAMERA_ALIGNMENT_RETRY",
+            goal_handle,
+            failed_grasp_verification);
     }
 
     bool runVisualPickFallback(
@@ -1176,6 +1340,7 @@ private:
                 this->get_logger(),
                 "Visual pick fallback server %s is not available",
                 visual_pick_action_name_.c_str());
+            speak("O servidor de recuperacao visual nao esta disponivel");
             return false;
         }
 
@@ -1231,18 +1396,22 @@ private:
         if (wrapped_result.code != rclcpp_action::ResultCode::SUCCEEDED ||
             !wrapped_result.result ||
             !wrapped_result.result->success) {
+            const std::string recovery_message =
+                wrapped_result.result ?
+                wrapped_result.result->message :
+                std::string("<empty result>");
             RCLCPP_WARN(
                 this->get_logger(),
                 "Visual pick fallback failed: %s",
-                wrapped_result.result ?
-                wrapped_result.result->message.c_str() :
-                "<empty result>");
+                recovery_message.c_str());
+            speak("A recuperacao visual tambem falhou");
             return false;
         }
 
         RCLCPP_WARN(
             this->get_logger(),
             "Visual pick fallback grasped the block. Finishing normal pick flow.");
+        speak("A recuperacao visual pegou o bloco");
         return transferGraspedObjectToContainer(
             arm,
             gripper,
@@ -1262,6 +1431,7 @@ private:
     {
         failed_grasp_verification = false;
         publish_stage(goal_handle, "detecting_tag");
+        speak("Procurando a tag " + spokenTagName(tag_frame));
 
         geometry_msgs::msg::TransformStamped tag_tf;
         if (!waitForTagTransform(
@@ -1277,55 +1447,12 @@ private:
 
         speak("Identifiquei a tag " + spokenTagName(tag_frame));
         publish_stage(goal_handle, "pre_approach");
-
-        constexpr double kTagXNearZero = 0.1;
-        constexpr double kTagYNearZero = 0.4;
-        const double tag_x = tag_tf.transform.translation.x;
-        const double tag_y = tag_tf.transform.translation.y;
-
-
-
-        if (std::abs(tag_x) > kTagXNearZero) {
-
-
-                arm->setStartStateToCurrentState();
-                arm->setEndEffectorLink("tcp");
-
-                if (tag_x > 0.0) {
-                    if (std::abs(tag_y) > kTagYNearZero) {
-                        arm->setNamedTarget("tag_direita_cima");
-                        if (!planAndExecute(arm, cycle_name + " go tag_direita_cima")) {
-                            return false;
-                        }
-                    } else {
-                        arm->setNamedTarget("tag_direita");
-                        if (!planAndExecute(arm, cycle_name + " go tag_direita")) {
-                            return false;
-                        }
-                    }
-                } else {
-                    if (std::abs(tag_y) > kTagYNearZero) {
-                        arm->setNamedTarget("tag_esquerda_cima");
-                        if (!planAndExecute(arm, cycle_name + " go tag_esquerda_cima")) {
-                            return false;
-                        }
-                    } else {
-                        arm->setNamedTarget("tag_esquerda");
-                        if (!planAndExecute(arm, cycle_name + " go tag_esquerda")) {
-                            return false;
-                        }
-                    }
-                }
-
-        }
-
-        if (std::abs(tag_y) > kTagYNearZero && std::abs(tag_x) <= kTagXNearZero) {
-            arm->setStartStateToCurrentState();
-            arm->setEndEffectorLink("tcp");
-            arm->setNamedTarget("tag_cima");
-            if (!planAndExecute(arm, cycle_name + " go tag_cima")) {
-                return false;
-            }
+        if (!alignCameraToTagXY(
+                arm,
+                tag_frame,
+                goal_handle,
+                cycle_name + " pre_approach_xy")) {
+            return false;
         }
 
         if (!sleepInterruptibly(std::chrono::milliseconds(1000))) {
@@ -1346,6 +1473,7 @@ private:
         arm->setMaxAccelerationScalingFactor(0.2);
         
         publish_stage(goal_handle, "final_approach");
+        //speak("Fazendo a aproximacao final da tag");
         if (!moveToTarget(
                 arm,
                 tag_tf,
@@ -1373,6 +1501,7 @@ private:
         }
 
         publish_stage(goal_handle, "closing_gripper");
+        //speak("Fechando a garra no bloco");
         gripper->setStartStateToCurrentState();
         gripper->setNamedTarget("gripper_close");
         if (!planAndExecute(gripper, cycle_name + " close gripper")) {
@@ -1381,6 +1510,7 @@ private:
 
         if (verify_grasp_effort_) {
             publish_stage(goal_handle, "verifying_grasp");
+            speak("Verificando o bloco pela forca da garra");
             if (!verifyGraspByEffort(*effort_before_close, cycle_name)) {
                 failed_grasp_verification = true;
                 speak("A garra não detectou o bloco");
@@ -1395,7 +1525,7 @@ private:
                     cycle_name + " reopen after failed grasp");
                 return false;
             }
-            speak("Bloco confirmado pela força da garra");
+            speak("A garra detectou o bloco");
         }
 
         return transferGraspedObjectToContainer(
@@ -1431,6 +1561,8 @@ private:
             return;
         }
 
+        //speak("Iniciando a rotina de pegar a tag " + spokenTagName(goal->tag_frame));
+
         std::string container_pose;
         std::string lookup_error;
         if (!container_state_store_->findFirstEmptyContainer(&container_pose, &lookup_error)) {
@@ -1440,6 +1572,7 @@ private:
             finish_failure(result->message);
             return;
         }
+        //speak("Container livre selecionado: " + container_pose);
 
         auto arm = createArmInterface(false);
         auto gripper = std::make_shared<MoveGroupInterface>(shared_from_this(), "gripper");
@@ -1449,6 +1582,7 @@ private:
         gripper->setMaxAccelerationScalingFactor(1.0);
 
         publish_stage(goal_handle, "opening_gripper");
+        //speak("Abrindo a garra antes de pegar");
         gripper->setStartStateToCurrentState();
         gripper->setNamedTarget("gripper_open");
         if (!planAndExecute(gripper, "open gripper")) {
@@ -1457,6 +1591,7 @@ private:
         }
 
         publish_stage(goal_handle, "going_pegar_obj");
+        //speak("Indo para a pose inicial de pegar");
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink("tcp");
         arm->setNamedTarget("pegar_obj");
@@ -1466,6 +1601,7 @@ private:
         }
 
         publish_stage(goal_handle, "approach_task");
+        //speak("Preparando a aproximacao planejada");
         mtc::Task approach_task;
         try {
             approach_task = createApproachTask();
@@ -1478,6 +1614,7 @@ private:
 
         if (!executeTask(approach_task, "approach")) {
             publish_stage(goal_handle, "approach_task_failed_fallback");
+            //speak("A aproximacao planejada falhou. Vou continuar pelo caminho alternativo");
             RCLCPP_WARN(
                 this->get_logger(),
                 "Approach task failed. Continuing pick cycle with fallback path.");
@@ -1492,13 +1629,19 @@ private:
             grasp_retry_attempts_ < 0 ? 1 : grasp_retry_attempts_ + 1;
         bool cycle_success = false;
         bool failed_grasp_verification = false;
-        bool using_fallback_ik = false;
 
         for (int attempt = 1; attempt <= max_pick_attempts; ++attempt) {
             const std::string cycle_name =
                 max_pick_attempts == 1 ?
                 "ACTION_CYCLE" :
                 "ACTION_CYCLE_ATTEMPT_" + std::to_string(attempt);
+
+            arm = createArmInterfaceForAttempt(attempt);
+            setActiveInterfaces(arm, gripper);
+
+            if (max_pick_attempts > 1) {
+                speak("Tentativa de pegar numero " + std::to_string(attempt));
+            }
 
             cycle_success = run_pick_cycle(
                 arm,
@@ -1521,22 +1664,12 @@ private:
                 break;
             }
 
-            if (switch_ik_after_failed_grasp_ &&
-                failed_grasp_verification &&
-                !using_fallback_ik &&
-                attempt < max_pick_attempts) {
-                publish_stage(goal_handle, "switching_ik_profile");
-                speak("Vou trocar o modelo de I K e tentar novamente");
-                RCLCPP_WARN(
-                    this->get_logger(),
-                    "Grasp verification failed. Switching to fallback IK "
-                    "profile before retry.");
-                arm = createArmInterface(true);
-                setActiveInterfaces(arm, gripper);
-                using_fallback_ik = true;
+            if (attempt < max_pick_attempts) {
+                publish_stage(goal_handle, "preparing_next_pick_attempt");
+                speak("Vou trocar o modelo de I K para a proxima tentativa");
             }
 
-            speak("Vou abrir a garra e tentar pegar novamente");
+            //speak("Vou abrir a garra e tentar pegar novamente");
             publish_stage(goal_handle, "retrying_grasp");
             RCLCPP_WARN(
                 this->get_logger(),
@@ -1563,17 +1696,8 @@ private:
             return;
         }
 
-        if (!cycle_success && failed_grasp_verification) {
-            cycle_success = runVisualPickFallback(
-                arm,
-                gripper,
-                goal->tag_frame,
-                container_pose,
-                goal_handle);
-        }
-
         if (cancellationRequested() || goal_handle->is_canceling()) {
-            finish_failure("canceled during visual pick fallback");
+            finish_failure("canceled after pick retries");
             return;
         }
 
@@ -1607,8 +1731,10 @@ private:
 
         if (result->success) {
             publish_stage(goal_handle, "done");
+            speak("Coleta concluida com sucesso");
             goal_handle->succeed(result);
         } else {
+            speak("Nao consegui pegar o bloco");
             finish_failure(result->message);
         }
     }

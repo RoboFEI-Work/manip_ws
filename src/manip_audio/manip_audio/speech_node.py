@@ -27,7 +27,7 @@ class SpeechNode(Node):
         self.declare_parameter('volume', 100)
         self.declare_parameter('piper_executable', 'piper-tts')
         self.declare_parameter('piper_model', '')
-        self.declare_parameter('player_executable', 'ffplay')
+        self.declare_parameter('player_executable', 'auto')
         self.declare_parameter('voice_effect', 'none')
         self.declare_parameter('effect_sample_rate', 22050)
         self.declare_parameter('queue_size', 10)
@@ -42,9 +42,15 @@ class SpeechNode(Node):
         self._piper_executable = str(
             self.get_parameter('piper_executable').value
         )
+        self._piper_executable = self._resolve_piper_executable(
+            self._piper_executable
+        )
         self._piper_model = str(self.get_parameter('piper_model').value)
         self._player_executable = str(
             self.get_parameter('player_executable').value
+        )
+        self._player_executable = self._resolve_player_executable(
+            self._player_executable
         )
         self._voice_effect = str(self.get_parameter('voice_effect').value)
         self._effect_sample_rate = int(
@@ -55,6 +61,7 @@ class SpeechNode(Node):
         )
         queue_size = max(1, int(configured_queue_size))
 
+        self._speech_available = self._log_backend_status()
         self._messages = queue.Queue(maxsize=queue_size)
         self._running = True
         self._worker = threading.Thread(
@@ -65,47 +72,76 @@ class SpeechNode(Node):
 
         self.create_subscription(String, '/manip/speech', self._on_speech, 10)
 
-        self._log_backend_status()
-
     def _log_backend_status(self):
         if self._backend == 'piper':
             if shutil.which(self._piper_executable) is None:
-                self.get_logger().error(
-                    f"Executável '{self._piper_executable}' não encontrado. "
+                return self._fallback_to_espeak(
+                    "Executável Piper TTS não encontrado. "
                     'Instale o Piper para usar voz local por IA.'
                 )
-                return
+            if not self._piper_supports_model_option():
+                return self._fallback_to_espeak(
+                    f"Executável '{self._piper_executable}' não parece ser "
+                    "o Piper TTS: ele não aceita a opção '--model'."
+                )
             if not self._piper_model:
-                self.get_logger().error(
+                return self._fallback_to_espeak(
                     "Parâmetro 'piper_model' vazio. Informe o caminho do "
                     'modelo .onnx para usar o backend piper.'
                 )
-                return
             if not Path(self._piper_model).exists():
-                self.get_logger().error(
+                return self._fallback_to_espeak(
                     f"Modelo Piper não encontrado: '{self._piper_model}'"
                 )
-                return
-            if shutil.which(self._player_executable) is None:
-                self.get_logger().error(
-                    f"Player '{self._player_executable}' não encontrado."
+            if not self._player_executable:
+                return self._fallback_to_espeak(
+                    "Nenhum player de áudio encontrado. Instale ffmpeg "
+                    "para usar ffplay, ou alsa-utils para usar aplay."
                 )
-                return
+            if (
+                self._voice_effect != 'none' and
+                Path(self._player_executable).name != 'ffplay'
+            ):
+                self.get_logger().warning(
+                    f"Efeito de voz '{self._voice_effect}' requer ffplay. "
+                    f"Usando {self._player_executable} sem efeito."
+                )
             self.get_logger().info(
                 'Síntese local Piper pronta em /manip/speech, '
-                f'modelo={self._piper_model}, efeito={self._voice_effect}'
+                f'modelo={self._piper_model}, player={self._player_executable}, '
+                f'efeito={self._voice_effect}'
             )
-            return
+            return True
 
+        return self._log_espeak_status()
+
+    def _log_espeak_status(self):
         if shutil.which(self._executable) is None:
             self.get_logger().error(
                 f"Executável '{self._executable}' não encontrado. "
                 'Instale com: sudo apt install espeak-ng'
             )
+            return False
         else:
             self.get_logger().info(
                 f'Síntese de voz pronta em /manip/speech, voz={self._voice}'
             )
+            return True
+
+    def _fallback_to_espeak(self, reason):
+        if shutil.which(self._executable) is None:
+            self.get_logger().error(reason)
+            self.get_logger().error(
+                f"Fallback espeak indisponível: executável "
+                f"'{self._executable}' não encontrado."
+            )
+            return False
+
+        self.get_logger().warning(
+            f'{reason} Usando fallback espeak em /manip/speech.'
+        )
+        self._backend = 'espeak'
+        return self._log_espeak_status()
 
     def _on_speech(self, message):
         text = self._normalize_text(message.data)
@@ -150,7 +186,28 @@ class SpeechNode(Node):
             '--output_file', str(output_file),
         ]
 
+    def _piper_supports_model_option(self):
+        if not self._piper_executable:
+            return False
+
+        try:
+            result = subprocess.run(
+                [self._piper_executable, '--help'],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+        except (FileNotFoundError, PermissionError, subprocess.TimeoutExpired):
+            return False
+
+        help_text = f'{result.stdout}\n{result.stderr}'
+        return '--model' in help_text
+
     def _voice_effect_filter(self):
+        if Path(self._player_executable).name != 'ffplay':
+            return ''
+
         sample_rate = max(8000, self._effect_sample_rate)
         if self._voice_effect == 'dog':
             return (
@@ -175,6 +232,10 @@ class SpeechNode(Node):
         return ''
 
     def _play_audio_command(self, audio_file):
+        player_name = Path(self._player_executable).name
+        if player_name in ('aplay', 'pw-play', 'paplay'):
+            return [self._player_executable, str(audio_file)]
+
         command = [
             self._player_executable,
             '-nodisp',
@@ -188,18 +249,57 @@ class SpeechNode(Node):
         command.append(str(audio_file))
         return command
 
+    @staticmethod
+    def _resolve_player_executable(player_executable):
+        if player_executable and player_executable != 'auto':
+            return player_executable
+
+        for candidate in ('ffplay', 'pw-play', 'paplay', 'aplay'):
+            resolved = shutil.which(candidate)
+            if resolved:
+                return resolved
+        return ''
+
+    def _resolve_piper_executable(self, piper_executable):
+        if piper_executable and piper_executable != 'auto':
+            return piper_executable
+
+        candidates = [
+            str(Path.home() / 'piper' / 'piper'),
+            str(Path.home() / '.local' / 'bin' / 'piper'),
+            'piper-tts',
+            'piper',
+        ]
+        for candidate in candidates:
+            resolved = shutil.which(candidate)
+            if not resolved:
+                continue
+            self._piper_executable = resolved
+            if self._piper_supports_model_option():
+                return resolved
+        return ''
+
     def _speak_with_piper(self, text):
+        if not self._speech_available:
+            return
+
         with NamedTemporaryFile(suffix='.wav', delete=False) as audio_file:
             audio_path = Path(audio_file.name)
 
         try:
-            subprocess.run(
+            result = subprocess.run(
                 self._piper_command(audio_path),
                 input=text,
                 text=True,
                 check=False,
+                capture_output=True,
                 timeout=30,
             )
+            if result.returncode != 0 or audio_path.stat().st_size == 0:
+                self.get_logger().error(
+                    'Piper TTS falhou ao gerar áudio.'
+                )
+                return
             subprocess.run(
                 self._play_audio_command(audio_path),
                 check=False,
@@ -209,6 +309,9 @@ class SpeechNode(Node):
             audio_path.unlink(missing_ok=True)
 
     def _speak(self, text):
+        if not self._speech_available:
+            return
+
         if self._backend == 'piper':
             self._speak_with_piper(text)
             return
@@ -228,7 +331,7 @@ class SpeechNode(Node):
 
             try:
                 self._speak(text)
-            except FileNotFoundError:
+            except (FileNotFoundError, PermissionError):
                 pass
             except subprocess.TimeoutExpired:
                 self.get_logger().warning(
@@ -252,7 +355,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

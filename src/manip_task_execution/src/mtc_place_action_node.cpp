@@ -2,6 +2,7 @@
 #include <rclcpp_action/rclcpp_action.hpp>
 
 #include <moveit/move_group_interface/move_group_interface.hpp>
+#include <std_msgs/msg/string.hpp>
 
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
@@ -63,7 +64,7 @@ public:
             "container_state_file",
             default_container_state_file);
         container_place_z_offset_ =
-            this->declare_parameter<double>("container_place_z_offset", 0.06);
+            this->declare_parameter<double>("container_place_z_offset", 0.07);
         container_state_store_ =
             std::make_unique<manip_task_execution::ContainerStateStore>(container_state_file_);
         declarePlanningDefaults();
@@ -72,6 +73,10 @@ public:
             std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ =
             std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+        speech_enabled_ = this->declare_parameter<bool>("speech_enabled", true);
+        speech_publisher_ =
+            this->create_publisher<std_msgs::msg::String>("/manip/speech", 10);
 
         action_server_ =
             rclcpp_action::create_server<PlaceTag>(
@@ -111,8 +116,10 @@ private:
     std::unique_ptr<manip_task_execution::ContainerStateStore> container_state_store_;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr speech_publisher_;
     double container_place_z_offset_;
     std::unique_ptr<manip_task_execution::ManipulatorExecutionLock> execution_lock_;
+    bool speech_enabled_{true};
     std::atomic_bool cancel_requested_{false};
     std::mutex active_interfaces_mutex_;
     std::shared_ptr<MoveGroupInterface> active_arm_;
@@ -140,6 +147,35 @@ private:
     bool cancellationRequested() const
     {
         return cancel_requested_.load();
+    }
+
+    static std::string spokenTargetName(std::string target)
+    {
+        constexpr char tag_prefix[] = "tag_";
+        if (target.rfind(tag_prefix, 0) == 0) {
+            target.erase(0, sizeof(tag_prefix) - 1);
+            target = "tag " + target;
+        } else if (target.rfind("ct", 0) == 0 && target.size() > 2) {
+            target = "container " + target.substr(2);
+        }
+        for (char & character : target) {
+            if (character == '_') {
+                character = ' ';
+            }
+        }
+        return target;
+    }
+
+    void speak(const std::string & text)
+    {
+        if (!speech_enabled_ || text.empty()) {
+            return;
+        }
+
+        std_msgs::msg::String message;
+        message.data = text;
+        speech_publisher_->publish(message);
+        RCLCPP_INFO(this->get_logger(), "[SPEECH] %s", text.c_str());
     }
 
     void setActiveInterfaces(
@@ -543,6 +579,7 @@ private:
         const std::shared_ptr<GoalHandlePlaceTag> & goal_handle)
     {
         if (!isTfPlaceTarget(table_pose)) {
+            speak("Indo para a pose de entrega " + spokenTargetName(table_pose));
             arm->setStartStateToCurrentState();
             arm->setEndEffectorLink("tcp");
             arm->setNamedTarget(table_pose);
@@ -550,6 +587,7 @@ private:
         }
 
         publish_stage(goal_handle, "detecting_place_tag");
+        speak("Procurando o alvo de entrega " + spokenTargetName(table_pose));
 
         geometry_msgs::msg::TransformStamped target_tf;
         if (!waitForTagTransform(
@@ -559,15 +597,18 @@ private:
                 std::chrono::milliseconds(5000),
                 std::chrono::milliseconds(200),
                 "place detect " + table_pose)) {
+            speak("Nao encontrei o alvo de entrega " + spokenTargetName(table_pose));
             return false;
         }
 
         publish_stage(goal_handle, "place_pre_approach");
+        speak("Alvo de entrega encontrado. Ajustando a aproximacao");
 
         constexpr double kTagXNearZero = 0.1;
         const double tag_x = target_tf.transform.translation.x;
 
         if (std::abs(tag_x) > kTagXNearZero) {
+            speak("Corrigindo a aproximacao lateral para a entrega");
             arm->setStartStateToCurrentState();
             arm->setEndEffectorLink("tcp");
 
@@ -595,12 +636,14 @@ private:
                 std::chrono::milliseconds(3000),
                 std::chrono::milliseconds(200),
                 "place final " + table_pose)) {
+            speak("Perdi o alvo de entrega antes da aproximacao final");
             return false;
         }
 
         target_tf.transform.translation.z += container_place_z_offset_;
 
         publish_stage(goal_handle, "place_final_approach");
+        speak("Fazendo a aproximacao final para entregar o bloco");
         return moveToTarget(arm, target_tf, "tcp", "place above " + table_pose, true);
     }
 
@@ -683,6 +726,10 @@ private:
             return;
         }
 
+        speak(
+            "Iniciando a rotina de entregar a " +
+            spokenTargetName(goal->tag_frame));
+
         auto arm = std::make_shared<MoveGroupInterface>(shared_from_this(), "arm");
         auto gripper = std::make_shared<MoveGroupInterface>(shared_from_this(), "gripper");
         setActiveInterfaces(arm, gripper);
@@ -700,6 +747,7 @@ private:
             finish_failure(result->message);
             return;
         }
+        speak("Objeto localizado no " + spokenTargetName(container_pose));
 
         arm->setPoseReferenceFrame("base_link");
         arm->setPlanningTime(15.0);
@@ -748,10 +796,12 @@ private:
         if (result->success)
         {
             publish_stage(goal_handle, "done");
+            speak("Entrega concluida com sucesso");
             goal_handle->succeed(result);
         }
         else
         {
+            speak("Nao consegui entregar o bloco");
             finish_failure(result->message);
         }
     }
@@ -764,6 +814,7 @@ private:
         const std::shared_ptr<GoalHandlePlaceTag>& goal_handle)
     {
         publish_stage(goal_handle, "opening_gripper");
+        speak("Abrindo a garra para preparar a retirada do container");
         gripper->setStartStateToCurrentState();
         gripper->setNamedTarget("gripper_open");
         if (!planAndExecute(gripper, "open gripper")) {
@@ -771,6 +822,7 @@ private:
         }
 
         publish_stage(goal_handle, "going_pre_container");
+        speak("Indo para a pre pose do container");
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink("tcp");
         arm->setNamedTarget("pre_container");
@@ -779,6 +831,7 @@ private:
         }
 
         publish_stage(goal_handle, "going_container");
+        speak("Indo ate o " + spokenTargetName(container_pose));
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink("tcp");
         arm->setNamedTarget(container_pose);
@@ -787,6 +840,7 @@ private:
         }
 
         publish_stage(goal_handle, "closing_gripper");
+        speak("Fechando a garra no bloco dentro do container");
         gripper->setStartStateToCurrentState();
         gripper->setNamedTarget("gripper_close");
         if (!planAndExecute(gripper, "close gripper")) {
@@ -794,6 +848,7 @@ private:
         }
 
         publish_stage(goal_handle, "returning_pre_container");
+        speak("Retirando o bloco do container");
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink("tcp");
         arm->setNamedTarget("pre_container");
@@ -802,6 +857,7 @@ private:
         }
 
         publish_stage(goal_handle, "going_pegar_obj");
+        speak("Indo para a pose de transporte");
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink("tcp");
         arm->setNamedTarget("pegar_obj");
@@ -813,6 +869,7 @@ private:
         arm->setMaxAccelerationScalingFactor(0.2);
         
         publish_stage(goal_handle, "going_table");
+        speak("Levando o bloco para o destino");
         if (!moveToPlaceTarget(arm, table_pose, goal_handle)) {
             return false;
         }
@@ -820,6 +877,7 @@ private:
         
 
         publish_stage(goal_handle, "opening_gripper_final");
+        speak("Abrindo a garra para soltar o bloco no destino");
         gripper->setStartStateToCurrentState();
         gripper->setNamedTarget("gripper_open");
         if (!planAndExecute(gripper, "open gripper final")) {
@@ -827,6 +885,7 @@ private:
         }
 
         publish_stage(goal_handle, "returning_pegar_obj_final");
+        speak("Voltando para a pose segura depois da entrega");
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink("tcp");
         arm->setNamedTarget("pegar_obj");

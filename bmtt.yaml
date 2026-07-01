@@ -3,13 +3,13 @@ actions:
     ws: WS_1
     mesa: Mesa0
   - kind: pick
-    tag_frame: tag_F20_20_B
+    tag_frame: tag_1
     ws: WS_1
   - kind: pick
-    tag_frame: tag_F20_20_G
+    tag_frame: tag_2
     ws: WS_1
   - kind: pick
-    tag_frame: tag_S40_40_G
+    tag_frame: tag_3
     ws: WS_1
   - kind: home
     pose_name: home
@@ -17,17 +17,17 @@ actions:
     ws: WS_8
     mesa: Mesa15
   - kind: place
-    tag_frame: tag_F20_20_G
+    tag_frame: tag_1
     ws: WS_8
-    table_pose: tag_M20_100
+    table_pose: tag_5
   - kind: place
-    tag_frame: tag_S40_40_G
+    tag_frame: tag_2
     ws: WS_8
-    table_pose: tag_F20_20_G
+    table_pose: tag_1
   - kind: place
-    tag_frame: tag_F20_20_B
+    tag_frame: tag_3
     ws: WS_8
-    table_pose: tag_S40_40_G
+    table_pose: tag_2
   - kind: home
     pose_name: home
   
