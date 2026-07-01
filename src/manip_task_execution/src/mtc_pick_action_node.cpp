@@ -161,6 +161,16 @@ public:
                 "robot_description_kinematics.arm.orientation_threshold",
                 0.30);
         }
+        if (!this->has_parameter("robot_description_kinematics.arm.solve_type")) {
+            this->declare_parameter<std::string>(
+                "robot_description_kinematics.arm.solve_type",
+                "Speed");
+        }
+        if (!this->has_parameter("robot_description_kinematics.arm.position_only_ik")) {
+            this->declare_parameter<bool>(
+                "robot_description_kinematics.arm.position_only_ik",
+                false);
+        }
         if (!this->has_parameter("robot_description_kinematics.arm.cost_threshold")) {
             this->declare_parameter<double>(
                 "robot_description_kinematics.arm.cost_threshold",
@@ -213,6 +223,16 @@ public:
             this->declare_parameter<double>(
                 "arm.orientation_threshold",
                 0.30);
+        }
+        if (!this->has_parameter("arm.solve_type")) {
+            this->declare_parameter<std::string>(
+                "arm.solve_type",
+                "Speed");
+        }
+        if (!this->has_parameter("arm.position_only_ik")) {
+            this->declare_parameter<bool>(
+                "arm.position_only_ik",
+                false);
         }
         if (!this->has_parameter("arm.cost_threshold")) {
             this->declare_parameter<double>(
@@ -312,12 +332,12 @@ public:
         third_ik_profile_.solver =
             this->declare_parameter<std::string>(
                 "attempt_3_ik_solver",
-                "trac_ik_kinematics_plugin/TRAC_IKKinematicsPlugin");
+                "pick_ik/PickIkPlugin");
         fallback_ik_profile_.solver = third_ik_profile_.solver;
         this->declare_parameter<std::string>(
             "primary_ik_solver",
             primary_ik_profile_.solver);
-        this->declare_parameter<std::string>(
+        fallback_ik_profile_.solver = this->declare_parameter<std::string>(
             "fallback_ik_solver",
             fallback_ik_profile_.solver);
         primary_ik_profile_.mode =
@@ -328,7 +348,24 @@ public:
             this->declare_parameter<std::string>("attempt_3_ik_mode", "Speed");
         fallback_ik_profile_.mode = third_ik_profile_.mode;
         this->declare_parameter<std::string>("primary_ik_mode", primary_ik_profile_.mode);
-        this->declare_parameter<std::string>("fallback_ik_mode", fallback_ik_profile_.mode);
+        fallback_ik_profile_.mode =
+            this->declare_parameter<std::string>("fallback_ik_mode", fallback_ik_profile_.mode);
+        primary_ik_profile_.solve_type =
+            this->declare_parameter<std::string>("attempt_1_ik_solve_type", "Speed");
+        second_ik_profile_.solve_type =
+            this->declare_parameter<std::string>("attempt_2_ik_solve_type", "Speed");
+        third_ik_profile_.solve_type =
+            this->declare_parameter<std::string>("attempt_3_ik_solve_type", "Distance");
+        fallback_ik_profile_.solve_type =
+            this->declare_parameter<std::string>("fallback_ik_solve_type", third_ik_profile_.solve_type);
+        primary_ik_profile_.position_only_ik =
+            this->declare_parameter<bool>("attempt_1_ik_position_only", false);
+        second_ik_profile_.position_only_ik =
+            this->declare_parameter<bool>("attempt_2_ik_position_only", false);
+        third_ik_profile_.position_only_ik =
+            this->declare_parameter<bool>("attempt_3_ik_position_only", false);
+        fallback_ik_profile_.position_only_ik =
+            this->declare_parameter<bool>("fallback_ik_position_only", third_ik_profile_.position_only_ik);
         primary_ik_profile_.rotation_scale =
             this->declare_parameter<double>("attempt_1_ik_rotation_scale", 0.03);
         second_ik_profile_.rotation_scale =
@@ -336,13 +373,35 @@ public:
         third_ik_profile_.rotation_scale =
             this->declare_parameter<double>("attempt_3_ik_rotation_scale", 0.01);
         fallback_ik_profile_.rotation_scale = third_ik_profile_.rotation_scale;
+        primary_ik_profile_.position_threshold =
+            this->declare_parameter<double>("attempt_1_ik_position_threshold", 0.002);
+        second_ik_profile_.position_threshold =
+            this->declare_parameter<double>("attempt_2_ik_position_threshold", 0.002);
+        third_ik_profile_.position_threshold =
+            this->declare_parameter<double>("attempt_3_ik_position_threshold", 0.010);
+        fallback_ik_profile_.position_threshold = third_ik_profile_.position_threshold;
         primary_ik_profile_.orientation_threshold =
             this->declare_parameter<double>("attempt_1_ik_orientation_threshold", 0.30);
         second_ik_profile_.orientation_threshold =
             this->declare_parameter<double>("attempt_2_ik_orientation_threshold", 0.30);
         third_ik_profile_.orientation_threshold =
-            this->declare_parameter<double>("attempt_3_ik_orientation_threshold", 0.60);
+            this->declare_parameter<double>("attempt_3_ik_orientation_threshold", 0.90);
         fallback_ik_profile_.orientation_threshold = third_ik_profile_.orientation_threshold;
+        primary_ik_profile_.goal_position_tolerance =
+            this->declare_parameter<double>("attempt_1_goal_position_tolerance", 0.003);
+        second_ik_profile_.goal_position_tolerance =
+            this->declare_parameter<double>("attempt_2_goal_position_tolerance", 0.003);
+        third_ik_profile_.goal_position_tolerance =
+            this->declare_parameter<double>("attempt_3_goal_position_tolerance", 0.010);
+        fallback_ik_profile_.goal_position_tolerance = third_ik_profile_.goal_position_tolerance;
+        primary_ik_profile_.goal_orientation_tolerance =
+            this->declare_parameter<double>("attempt_1_goal_orientation_tolerance", 0.20);
+        second_ik_profile_.goal_orientation_tolerance =
+            this->declare_parameter<double>("attempt_2_goal_orientation_tolerance", 0.20);
+        third_ik_profile_.goal_orientation_tolerance =
+            this->declare_parameter<double>("attempt_3_goal_orientation_tolerance", 0.80);
+        fallback_ik_profile_.goal_orientation_tolerance =
+            third_ik_profile_.goal_orientation_tolerance;
         primary_ik_profile_.minimal_displacement_weight =
             this->declare_parameter<double>(
                 "attempt_1_ik_minimal_displacement_weight",
@@ -381,6 +440,8 @@ public:
             this->declare_parameter<double>("visual_pick_server_timeout", 1.0);
         visual_pick_result_timeout_ =
             this->declare_parameter<double>("visual_pick_result_timeout", 45.0);
+        skip_failed_pick_after_retries_ =
+            this->declare_parameter<bool>("skip_failed_pick_after_retries", true);
         use_camera_alignment_retry_ =
             this->declare_parameter<bool>("use_camera_alignment_retry", true);
 
@@ -441,8 +502,13 @@ private:
     {
         std::string solver{"pick_ik/PickIkPlugin"};
         std::string mode{"global"};
+        std::string solve_type{"Speed"};
+        bool position_only_ik{false};
         double rotation_scale{0.03};
+        double position_threshold{0.002};
         double orientation_threshold{0.30};
+        double goal_position_tolerance{0.003};
+        double goal_orientation_tolerance{0.20};
         double minimal_displacement_weight{0.02};
         double gd_step_size{0.0008};
         double timeout{0.2};
@@ -451,29 +517,47 @@ private:
     IkProfile second_ik_profile_{
         "kdl_kinematics_plugin/KDLKinematicsPlugin",
         "global",
+        "Speed",
+        false,
         0.03,
+        0.002,
         0.30,
+        0.003,
+        0.20,
         0.02,
         0.0008,
         0.4};
     IkProfile third_ik_profile_{
-        "trac_ik_kinematics_plugin/TRAC_IKKinematicsPlugin",
+        "pick_ik/PickIkPlugin",
         "Speed",
+        "Distance",
+        false,
         0.01,
-        0.60,
+        0.010,
+        0.90,
+        0.010,
+        0.80,
         0.20,
         0.0015,
         0.5};
     IkProfile fallback_ik_profile_{
-        "trac_ik_kinematics_plugin/TRAC_IKKinematicsPlugin",
+        "pick_ik/PickIkPlugin",
         "Speed",
+        "Distance",
+        false,
         0.01,
-        0.60,
+        0.010,
+        0.90,
+        0.010,
+        0.80,
         0.20,
         0.0015,
         0.5};
     bool use_visual_pick_fallback_{true};
     bool use_camera_alignment_retry_{true};
+    bool skip_failed_pick_after_retries_{true};
+    double active_goal_position_tolerance_{0.003};
+    double active_goal_orientation_tolerance_{0.20};
     std::string visual_pick_action_name_{"/pick_tag_recovery"};
     double visual_pick_server_timeout_{1.0};
     double visual_pick_result_timeout_{45.0};
@@ -564,9 +648,17 @@ private:
                 this->set_parameter(
                     rclcpp::Parameter(prefix + ".mode", profile.mode));
                 this->set_parameter(
+                    rclcpp::Parameter(prefix + ".solve_type", profile.solve_type));
+                this->set_parameter(
+                    rclcpp::Parameter(prefix + ".position_only_ik", profile.position_only_ik));
+                this->set_parameter(
                     rclcpp::Parameter(
                         prefix + ".rotation_scale",
                         profile.rotation_scale));
+                this->set_parameter(
+                    rclcpp::Parameter(
+                        prefix + ".position_threshold",
+                        profile.position_threshold));
                 this->set_parameter(
                     rclcpp::Parameter(
                         prefix + ".orientation_threshold",
@@ -585,16 +677,25 @@ private:
         RCLCPP_WARN(
             this->get_logger(),
             "Using %s IK profile: solver=%s mode=%s timeout=%.3f "
-            "rotation_scale=%.3f orientation_threshold=%.3f "
+            "solve_type=%s position_only_ik=%s "
+            "rotation_scale=%.3f position_threshold=%.3f orientation_threshold=%.3f "
+            "goal_position_tolerance=%.3f goal_orientation_tolerance=%.3f "
             "minimal_displacement_weight=%.3f gd_step_size=%.4f",
             profile_name.c_str(),
             profile.solver.c_str(),
             profile.mode.c_str(),
             profile.timeout,
+            profile.solve_type.c_str(),
+            profile.position_only_ik ? "true" : "false",
             profile.rotation_scale,
+            profile.position_threshold,
             profile.orientation_threshold,
+            profile.goal_position_tolerance,
+            profile.goal_orientation_tolerance,
             profile.minimal_displacement_weight,
             profile.gd_step_size);
+        active_goal_position_tolerance_ = profile.goal_position_tolerance;
+        active_goal_orientation_tolerance_ = profile.goal_orientation_tolerance;
     }
 
     const IkProfile & ikProfileForAttempt(int attempt) const
@@ -1038,8 +1139,9 @@ private:
 
         MoveGroupInterface::Plan plan;
 
-        arm->setGoalPositionTolerance(0.01);
-        arm->setGoalOrientationTolerance(use_orientation_constraint ? 0.45 : M_PI);
+        arm->setGoalPositionTolerance(active_goal_position_tolerance_);
+        arm->setGoalOrientationTolerance(
+            use_orientation_constraint ? active_goal_orientation_tolerance_ : M_PI);
 
         arm->clearPoseTargets();
         arm->setPoseTarget(target_pose, eef_link);
@@ -1732,6 +1834,12 @@ private:
         if (result->success) {
             publish_stage(goal_handle, "done");
             speak("Coleta concluida com sucesso");
+            goal_handle->succeed(result);
+        } else if (!cycle_success && skip_failed_pick_after_retries_) {
+            publish_stage(goal_handle, "skipped_after_pick_retries");
+            result->success = true;
+            result->message = "Pick skipped after all retry attempts failed";
+            speak("Nao consegui pegar o bloco. Vou seguir para o proximo objetivo");
             goal_handle->succeed(result);
         } else {
             speak("Nao consegui pegar o bloco");

@@ -64,7 +64,9 @@ public:
             "container_state_file",
             default_container_state_file);
         container_place_z_offset_ =
-            this->declare_parameter<double>("container_place_z_offset", 0.07);
+            this->declare_parameter<double>("container_place_z_offset", 0.1);
+        skip_missing_place_tag_ =
+            this->declare_parameter<bool>("skip_missing_place_tag", true);
         container_state_store_ =
             std::make_unique<manip_task_execution::ContainerStateStore>(container_state_file_);
         declarePlanningDefaults();
@@ -120,6 +122,7 @@ private:
     double container_place_z_offset_;
     std::unique_ptr<manip_task_execution::ManipulatorExecutionLock> execution_lock_;
     bool speech_enabled_{true};
+    bool skip_missing_place_tag_{true};
     std::atomic_bool cancel_requested_{false};
     std::mutex active_interfaces_mutex_;
     std::shared_ptr<MoveGroupInterface> active_arm_;
@@ -532,8 +535,8 @@ private:
 
         MoveGroupInterface::Plan plan;
 
-        arm->setGoalPositionTolerance(0.005);
-        arm->setGoalOrientationTolerance(use_orientation_constraint ? 0.15 : M_PI);
+        arm->setGoalPositionTolerance(0.0005);
+        arm->setGoalOrientationTolerance(use_orientation_constraint ? 0.05 : M_PI);
         arm->clearPoseTargets();
         arm->setPoseTarget(target_pose, eef_link);
 
@@ -608,7 +611,7 @@ private:
         const double tag_x = target_tf.transform.translation.x;
 
         if (std::abs(tag_x) > kTagXNearZero) {
-            speak("Corrigindo a aproximacao lateral para a entrega");
+            //speak("Corrigindo a aproximacao lateral para a entrega");
             arm->setStartStateToCurrentState();
             arm->setEndEffectorLink("tcp");
 
@@ -643,7 +646,7 @@ private:
         target_tf.transform.translation.z += container_place_z_offset_;
 
         publish_stage(goal_handle, "place_final_approach");
-        speak("Fazendo a aproximacao final para entregar o bloco");
+        //speak("Fazendo a aproximacao final para entregar o bloco");
         return moveToTarget(arm, target_tf, "tcp", "place above " + table_pose, true);
     }
 
@@ -720,6 +723,15 @@ private:
                     goal_handle->abort(result);
                 }
             };
+        const auto finish_skip =
+            [this, &goal_handle, &result](const std::string & message)
+            {
+                result->success = true;
+                result->message = message;
+                publish_stage(goal_handle, "skipped_missing_container_tag");
+                speak("Nao encontrei esse bloco no container. Vou seguir para a proxima tarefa");
+                goal_handle->succeed(result);
+            };
 
         if (cancellationRequested() || goal_handle->is_canceling()) {
             finish_failure("canceled before execution started");
@@ -741,6 +753,11 @@ private:
                 &container_pose,
                 &lookup_error))
         {
+            if (skip_missing_place_tag_) {
+                finish_skip("Place skipped: tag '" + goal->tag_frame +
+                    "' is not in any occupied container: " + lookup_error);
+                return;
+            }
             result->success = false;
             result->message = "Place failed: could not resolve container for tag '" +
                 goal->tag_frame + "' from yaml: " + lookup_error;
@@ -814,7 +831,7 @@ private:
         const std::shared_ptr<GoalHandlePlaceTag>& goal_handle)
     {
         publish_stage(goal_handle, "opening_gripper");
-        speak("Abrindo a garra para preparar a retirada do container");
+        //speak("Abrindo a garra para preparar a retirada do container");
         gripper->setStartStateToCurrentState();
         gripper->setNamedTarget("gripper_open");
         if (!planAndExecute(gripper, "open gripper")) {
@@ -822,7 +839,7 @@ private:
         }
 
         publish_stage(goal_handle, "going_pre_container");
-        speak("Indo para a pre pose do container");
+        //speak("Indo para a pre pose do container");
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink("tcp");
         arm->setNamedTarget("pre_container");
@@ -831,7 +848,7 @@ private:
         }
 
         publish_stage(goal_handle, "going_container");
-        speak("Indo ate o " + spokenTargetName(container_pose));
+        //speak("Indo ate o " + spokenTargetName(container_pose));
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink("tcp");
         arm->setNamedTarget(container_pose);
@@ -840,7 +857,7 @@ private:
         }
 
         publish_stage(goal_handle, "closing_gripper");
-        speak("Fechando a garra no bloco dentro do container");
+        //speak("Fechando a garra no bloco dentro do container");
         gripper->setStartStateToCurrentState();
         gripper->setNamedTarget("gripper_close");
         if (!planAndExecute(gripper, "close gripper")) {
@@ -848,7 +865,7 @@ private:
         }
 
         publish_stage(goal_handle, "returning_pre_container");
-        speak("Retirando o bloco do container");
+        //speak("Retirando o bloco do container");
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink("tcp");
         arm->setNamedTarget("pre_container");
@@ -857,7 +874,7 @@ private:
         }
 
         publish_stage(goal_handle, "going_pegar_obj");
-        speak("Indo para a pose de transporte");
+        //speak("Indo para a pose de transporte");
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink("tcp");
         arm->setNamedTarget("pegar_obj");
@@ -869,7 +886,7 @@ private:
         arm->setMaxAccelerationScalingFactor(0.2);
         
         publish_stage(goal_handle, "going_table");
-        speak("Levando o bloco para o destino");
+        //speak("Levando o bloco para o destino");
         if (!moveToPlaceTarget(arm, table_pose, goal_handle)) {
             return false;
         }
@@ -877,7 +894,7 @@ private:
         
 
         publish_stage(goal_handle, "opening_gripper_final");
-        speak("Abrindo a garra para soltar o bloco no destino");
+        //speak("Abrindo a garra para soltar o bloco no destino");
         gripper->setStartStateToCurrentState();
         gripper->setNamedTarget("gripper_open");
         if (!planAndExecute(gripper, "open gripper final")) {
@@ -885,7 +902,7 @@ private:
         }
 
         publish_stage(goal_handle, "returning_pegar_obj_final");
-        speak("Voltando para a pose segura depois da entrega");
+        //speak("Voltando para a pose segura depois da entrega");
         arm->setStartStateToCurrentState();
         arm->setEndEffectorLink("tcp");
         arm->setNamedTarget("pegar_obj");

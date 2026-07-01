@@ -71,7 +71,9 @@
             </group>
 
             <group if="$(var launch_place_action)">
-                  <node pkg="manip_task_execution" exec="mtc_place_action_node" output="screen"/>
+                  <node pkg="manip_task_execution" exec="mtc_place_action_node" output="screen">
+                        <param name="skip_missing_place_tag" value="true"/>
+                  </node>
             </group>
 
 </launch>

@@ -16,6 +16,8 @@ pick_complete: Objeto pego.
 pick_failed: Falha ao pegar o objeto. 
 place_complete: Objeto posicionado.
 place_failed: Falha ao posicionar o objeto.
+pick_skip_next_objective: Nao consegui pegar o bloco. Vou seguir para o proximo objetivo.
+place_skip_missing_container_tag: Nao encontrei esse bloco no container. Vou seguir para a proxima tarefa.
 
 
 Navegacao por workstation
@@ -120,3 +122,25 @@ place_tag_26: Colocando a tag 26.
 place_tag_27: Colocando a tag 27.
 place_tag_28: Colocando a tag 28.
 place_tag_42: Colocando a tag 42.
+
+
+Pick - rotina e recuperacao
+---------------------------
+pick_attempt_1: Tentativa de pegar numero 1.
+pick_attempt_2: Tentativa de pegar numero 2.
+pick_attempt_3: Tentativa de pegar numero 3.
+pick_switch_ik: Vou trocar o modelo de I K para a proxima tentativa.
+pick_tag_searching_named: Procurando a tag.
+pick_tag_found_named: Identifiquei a tag.
+pick_tag_not_found_named: Nao encontrei a tag.
+pick_ik_found_named: Encontrei uma solucao de I K para a tag.
+pick_ik_not_found_named: Nao encontrei uma solucao de I K para a tag.
+pick_block_secured: Bloco seguro. Voltando para a pose de transporte.
+pick_gripper_checking: Verificando o bloco pela forca da garra.
+pick_gripper_detected: A garra detectou o bloco.
+pick_gripper_not_detected: A garra nao detectou o bloco.
+pick_gripper_effort_unavailable: Nao consigo verificar o esforco da garra.
+pick_camera_retry: Vou realinhar a camera e tentar novamente com a primeira I K.
+pick_complete_verbose: Coleta concluida com sucesso.
+
+

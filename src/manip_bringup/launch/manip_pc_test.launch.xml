@@ -25,10 +25,20 @@
             <arg name="switch_ik_after_failed_grasp" default="true"/>
             <arg name="attempt_1_ik_solver" default="pick_ik/PickIkPlugin"/>
             <arg name="attempt_2_ik_solver" default="kdl_kinematics_plugin/KDLKinematicsPlugin"/>
-            <arg name="attempt_3_ik_solver" default="trac_ik_kinematics_plugin/TRAC_IKKinematicsPlugin"/>
+            <arg name="attempt_3_ik_solver" default="pick_ik/PickIkPlugin"/>
+            <arg name="attempt_3_ik_solve_type" default="Distance"/>
+            <arg name="attempt_3_ik_position_only" default="false"/>
+            <arg name="attempt_3_ik_position_threshold" default="0.010"/>
+            <arg name="attempt_3_ik_orientation_threshold" default="0.90"/>
+            <arg name="attempt_3_goal_position_tolerance" default="0.010"/>
+            <arg name="attempt_3_goal_orientation_tolerance" default="0.80"/>
+            <arg name="skip_failed_pick_after_retries" default="true"/>
+            <arg name="skip_missing_place_tag" default="true"/>
             <arg name="use_camera_alignment_retry" default="true"/>
             <arg name="fallback_ik_solver" default="pick_ik/PickIkPlugin"/>
             <arg name="fallback_ik_mode" default="local"/>
+            <arg name="fallback_ik_solve_type" default="Distance"/>
+            <arg name="fallback_ik_position_only" default="true"/>
             <arg name="visual_pick_action_name" default="/pick_tag_recovery"/>
             <arg name="pick_recovery_devicename" default="/dev/ttyUSB0"/>
             <arg name="pick_recovery_baudrate" default="1000000"/>
@@ -130,8 +140,17 @@
                         <param name="attempt_1_ik_solver" value="$(var attempt_1_ik_solver)"/>
                         <param name="attempt_2_ik_solver" value="$(var attempt_2_ik_solver)"/>
                         <param name="attempt_3_ik_solver" value="$(var attempt_3_ik_solver)"/>
+                        <param name="attempt_3_ik_solve_type" value="$(var attempt_3_ik_solve_type)"/>
+                        <param name="attempt_3_ik_position_only" value="$(var attempt_3_ik_position_only)"/>
+                        <param name="attempt_3_ik_position_threshold" value="$(var attempt_3_ik_position_threshold)"/>
+                        <param name="attempt_3_ik_orientation_threshold" value="$(var attempt_3_ik_orientation_threshold)"/>
+                        <param name="attempt_3_goal_position_tolerance" value="$(var attempt_3_goal_position_tolerance)"/>
+                        <param name="attempt_3_goal_orientation_tolerance" value="$(var attempt_3_goal_orientation_tolerance)"/>
                         <param name="fallback_ik_solver" value="$(var fallback_ik_solver)"/>
                         <param name="fallback_ik_mode" value="$(var fallback_ik_mode)"/>
+                        <param name="fallback_ik_solve_type" value="$(var fallback_ik_solve_type)"/>
+                        <param name="fallback_ik_position_only" value="$(var fallback_ik_position_only)"/>
+                        <param name="skip_failed_pick_after_retries" value="$(var skip_failed_pick_after_retries)"/>
                         <param name="use_visual_pick_fallback" value="$(var launch_pick_recovery)"/>
                         <param name="use_camera_alignment_retry" value="$(var use_camera_alignment_retry)"/>
                         <param name="visual_pick_action_name" value="$(var visual_pick_action_name)"/>
@@ -139,7 +158,9 @@
             </group>
 
             <group if="$(var launch_place_action)">
-                  <node pkg="manip_task_execution" exec="mtc_place_action_node" output="screen"/>
+                  <node pkg="manip_task_execution" exec="mtc_place_action_node" output="screen">
+                        <param name="skip_missing_place_tag" value="$(var skip_missing_place_tag)"/>
+                  </node>
             </group>
 
 </launch>
