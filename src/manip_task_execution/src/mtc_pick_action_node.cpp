@@ -716,7 +716,7 @@ private:
 
     void configureArmInterface(const std::shared_ptr<MoveGroupInterface> & arm)
     {
-        arm->setPoseReferenceFrame("base_link");
+        arm->setPoseReferenceFrame("base_footprint");
         arm->setPlanningTime(15.0);
         arm->setNumPlanningAttempts(20);
         arm->setMaxVelocityScalingFactor(1.0);
@@ -1359,7 +1359,7 @@ private:
 
         geometry_msgs::msg::TransformStamped tag_tf;
         if (!waitForTagTransform(
-                "base_link",
+                "base_footprint",
                 tag_frame,
                 tag_tf,
                 std::chrono::milliseconds(5000),
@@ -1555,7 +1555,7 @@ private:
 
         geometry_msgs::msg::TransformStamped tag_tf;
         if (!waitForTagTransform(
-                "base_link",
+                "base_footprint",
                 tag_frame,
                 tag_tf,
                 std::chrono::milliseconds(5000),
@@ -1580,7 +1580,7 @@ private:
         }
 
         if (!waitForTagTransform(
-                "base_link",
+                "base_footprint",
                 tag_frame,
                 tag_tf,
                 std::chrono::milliseconds(3000),
