@@ -7,18 +7,18 @@
     <let name="rviz_config_path"
         value="$(find-pkg-share manip_bringup)/config/manip_moveit.rviz"/>
 
-            <arg name="use_mock_components" default="true"/>
+            <arg name="use_mock_components" default="false"/>
             <arg name="launch_realsense" default="true"/>
             <arg name="launch_apriltag" default="true"/>
             <arg name="launch_pick_action" default="true"/>
-            <arg name="launch_pick_recovery" default="false"/>
+            <arg name="launch_pick_recovery" default="true"/>
             <arg name="launch_place_action" default="true"/>
             <arg name="launch_speech" default="true"/>
             <arg name="piper_executable" default="auto"/>
             <arg name="piper_model" default="$(find-pkg-share manip_audio)/models/pt_BR-jeff/pt_BR-jeff-medium.onnx"/>
             <arg name="speech_player_executable" default="auto"/>
             <arg name="launch_pick_telemetry" default="false"/>
-            <arg name="verify_grasp_effort" default="false"/>
+            <arg name="verify_grasp_effort" default="true"/>
             <arg name="grasp_min_effort_nm" default="0.15"/>
             <arg name="grasp_min_effort_increase_nm" default="0.05"/>
             <arg name="grasp_retry_attempts" default="2"/>

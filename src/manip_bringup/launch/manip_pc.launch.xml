@@ -1,11 +1,10 @@
 <launch>
 
-    <let
-        name="urdf_path"
-        value="$(find-pkg-share manip_description)/urdf/manip.urdf.xacro"/>
+    <arg name="urdf_path" default="$(find-pkg-share manip_description)/urdf/manip.urdf.xacro"/>
+    <arg name="launch_local_robot_state_publisher" default="false"/>
 
     <let name="rviz_config_path"
-        value="$(find-pkg-share manip_bringup)/config/manip_moveit.rviz"/>
+        value="$(find-pkg-share manip_bringup)/config/manip_moveit_rasp.rviz"/>
 
     <arg name="launch_realsense" default="true"/>
     <arg name="launch_apriltag" default="true"/>
@@ -49,11 +48,13 @@
     <arg name="reset_container_states" default="true"/>
     <arg name="apriltag_params_file" default="$(env HOME)/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml"/>
 
-    <node pkg="robot_state_publisher" exec="robot_state_publisher">
-        <param
-            name="robot_description"
-            value="$(command 'xacro $(var urdf_path) use_mock_components:=false use_realsense:=$(var launch_realsense)')"/>
-    </node>
+    <group if="$(var launch_local_robot_state_publisher)">
+        <node pkg="robot_state_publisher" exec="robot_state_publisher">
+            <param
+                name="robot_description"
+                value="$(command 'xacro $(var urdf_path) use_mock_components:=false use_realsense:=$(var launch_realsense)')"/>
+        </node>
+    </group>
 
     <node pkg="rviz2" exec="rviz2" output="screen"
           args="-d $(var rviz_config_path)"/>

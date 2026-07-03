@@ -378,28 +378,28 @@ public:
         second_ik_profile_.position_threshold =
             this->declare_parameter<double>("attempt_2_ik_position_threshold", 0.002);
         third_ik_profile_.position_threshold =
-            this->declare_parameter<double>("attempt_3_ik_position_threshold", 0.010);
+            this->declare_parameter<double>("attempt_3_ik_position_threshold", 0.002);
         fallback_ik_profile_.position_threshold = third_ik_profile_.position_threshold;
         primary_ik_profile_.orientation_threshold =
             this->declare_parameter<double>("attempt_1_ik_orientation_threshold", 0.30);
         second_ik_profile_.orientation_threshold =
             this->declare_parameter<double>("attempt_2_ik_orientation_threshold", 0.30);
         third_ik_profile_.orientation_threshold =
-            this->declare_parameter<double>("attempt_3_ik_orientation_threshold", 0.90);
+            this->declare_parameter<double>("attempt_3_ik_orientation_threshold", 0.30);
         fallback_ik_profile_.orientation_threshold = third_ik_profile_.orientation_threshold;
         primary_ik_profile_.goal_position_tolerance =
             this->declare_parameter<double>("attempt_1_goal_position_tolerance", 0.003);
         second_ik_profile_.goal_position_tolerance =
             this->declare_parameter<double>("attempt_2_goal_position_tolerance", 0.003);
         third_ik_profile_.goal_position_tolerance =
-            this->declare_parameter<double>("attempt_3_goal_position_tolerance", 0.010);
+            this->declare_parameter<double>("attempt_3_goal_position_tolerance", 0.003);
         fallback_ik_profile_.goal_position_tolerance = third_ik_profile_.goal_position_tolerance;
         primary_ik_profile_.goal_orientation_tolerance =
             this->declare_parameter<double>("attempt_1_goal_orientation_tolerance", 0.20);
         second_ik_profile_.goal_orientation_tolerance =
             this->declare_parameter<double>("attempt_2_goal_orientation_tolerance", 0.20);
         third_ik_profile_.goal_orientation_tolerance =
-            this->declare_parameter<double>("attempt_3_goal_orientation_tolerance", 0.80);
+            this->declare_parameter<double>("attempt_3_goal_orientation_tolerance", 0.20);
         fallback_ik_profile_.goal_orientation_tolerance =
             third_ik_profile_.goal_orientation_tolerance;
         primary_ik_profile_.minimal_displacement_weight =
@@ -1098,6 +1098,7 @@ private:
         const std::string & eef_link,
         const std::string & label,
         bool use_orientation_constraint,
+        bool enforce_pitch_pi,
         const std::string & ik_success_speech = "",
         const std::string & ik_failure_speech = "")
     {
@@ -1130,7 +1131,22 @@ private:
 
         if (use_orientation_constraint) {
             tf2::Quaternion desired_q;
-            desired_q.setRPY(0.0, M_PI, yaw);
+            if (enforce_pitch_pi) {
+                desired_q.setRPY(0.0, M_PI, yaw);
+            } else {
+                const auto current_pose = arm->getCurrentPose(eef_link).pose;
+                tf2::Quaternion current_q;
+                tf2::fromMsg(current_pose.orientation, current_q);
+                double current_roll = 0.0;
+                double current_pitch = 0.0;
+                double current_yaw = 0.0;
+                tf2::Matrix3x3(current_q).getRPY(
+                    current_roll,
+                    current_pitch,
+                    current_yaw);
+                (void)current_yaw;
+                desired_q.setRPY(current_roll, current_pitch, yaw);
+            }
             desired_q.normalize();
             target_pose.orientation = tf2::toMsg(desired_q);
         } else {
@@ -1414,6 +1430,7 @@ private:
             container_pose,
             "CAMERA_ALIGNMENT_RETRY",
             goal_handle,
+            true,
             failed_grasp_verification);
     }
 
@@ -1529,6 +1546,7 @@ private:
         const std::string & container_pose,
         const std::string & cycle_name,
         const std::shared_ptr<GoalHandlePickTag> & goal_handle,
+        bool enforce_pitch_pi,
         bool & failed_grasp_verification)
     {
         failed_grasp_verification = false;
@@ -1582,6 +1600,7 @@ private:
                 "tcp",
                 cycle_name + " tcp final",
                 true,
+                enforce_pitch_pi,
                 "Encontrei uma solução de I K para a tag " + spokenTagName(tag_frame),
                 "Não encontrei uma solução de I K para a tag " + spokenTagName(tag_frame))) {
             return false;
@@ -1752,6 +1771,7 @@ private:
                 container_pose,
                 cycle_name,
                 goal_handle,
+                attempt < 3,
                 failed_grasp_verification);
 
             if (cycle_success) {
