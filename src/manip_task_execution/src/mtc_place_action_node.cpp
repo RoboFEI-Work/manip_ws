@@ -633,7 +633,7 @@ private:
         }
 
         if (!waitForTagTransform(
-                "base_link",
+                "base_footprint",
                 table_pose,
                 target_tf,
                 std::chrono::milliseconds(3000),
@@ -766,7 +766,7 @@ private:
         }
         speak("Objeto localizado no " + spokenTargetName(container_pose));
 
-        arm->setPoseReferenceFrame("base_link");
+        arm->setPoseReferenceFrame("base_footprint");
         arm->setPlanningTime(15.0);
         arm->setNumPlanningAttempts(20);
         arm->setMaxVelocityScalingFactor(1.0);
