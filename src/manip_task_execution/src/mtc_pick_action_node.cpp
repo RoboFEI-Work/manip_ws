@@ -1355,11 +1355,11 @@ private:
         const std::string & cycle_name)
     {
         publish_stage(goal_handle, "camera_xy_alignment");
-        speak("Alinhando a camera em X e Y pela tag " + spokenTagName(tag_frame));
+        //speak("Alinhando a camera em X e Y pela tag " + spokenTagName(tag_frame));
 
         geometry_msgs::msg::TransformStamped tag_tf;
         if (!waitForTagTransform(
-                "base_footprint",
+                "manip_base_link",
                 tag_frame,
                 tag_tf,
                 std::chrono::milliseconds(5000),
