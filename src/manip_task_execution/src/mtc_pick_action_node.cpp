@@ -20,7 +20,6 @@
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
-#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -430,20 +429,24 @@ public:
         third_ik_profile_.timeout =
             this->declare_parameter<double>("attempt_3_ik_timeout", 0.5);
         fallback_ik_profile_.timeout = third_ik_profile_.timeout;
-        use_visual_pick_fallback_ =
-            this->declare_parameter<bool>("use_visual_pick_fallback", true);
-        visual_pick_action_name_ =
-            this->declare_parameter<std::string>(
-                "visual_pick_action_name",
-                "/pick_tag_recovery");
-        visual_pick_server_timeout_ =
-            this->declare_parameter<double>("visual_pick_server_timeout", 1.0);
-        visual_pick_result_timeout_ =
-            this->declare_parameter<double>("visual_pick_result_timeout", 45.0);
         skip_failed_pick_after_retries_ =
             this->declare_parameter<bool>("skip_failed_pick_after_retries", true);
         use_camera_alignment_retry_ =
             this->declare_parameter<bool>("use_camera_alignment_retry", true);
+        arm_planning_time_sec_ =
+            this->declare_parameter<double>("arm_planning_time_sec", 4.0);
+        arm_planning_attempts_ =
+            this->declare_parameter<int>("arm_planning_attempts", 4);
+        mtc_plan_solution_limit_ =
+            this->declare_parameter<int>("mtc_plan_solution_limit", 3);
+        publish_mtc_solution_ =
+            this->declare_parameter<bool>("publish_mtc_solution", false);
+        gripper_effort_wait_timeout_ms_ =
+            this->declare_parameter<int>("gripper_effort_wait_timeout_ms", 400);
+        pre_pick_cycle_wait_ms_ =
+            this->declare_parameter<int>("pre_pick_cycle_wait_ms", 120);
+        grasp_retry_wait_ms_ =
+            this->declare_parameter<int>("grasp_retry_wait_ms", 80);
 
         effort_subscription_ =
             this->create_subscription<control_msgs::msg::DynamicJointState>(
@@ -534,7 +537,7 @@ private:
         false,
         0.01,
         0.010,
-        0.90,
+        0.20,
         0.010,
         0.80,
         0.20,
@@ -553,15 +556,17 @@ private:
         0.20,
         0.0015,
         0.5};
-    bool use_visual_pick_fallback_{true};
     bool use_camera_alignment_retry_{true};
     bool skip_failed_pick_after_retries_{true};
+    double arm_planning_time_sec_{4.0};
+    int arm_planning_attempts_{4};
+    int mtc_plan_solution_limit_{3};
+    bool publish_mtc_solution_{false};
+    int gripper_effort_wait_timeout_ms_{400};
+    int pre_pick_cycle_wait_ms_{120};
+    int grasp_retry_wait_ms_{80};
     double active_goal_position_tolerance_{0.003};
     double active_goal_orientation_tolerance_{0.20};
-    std::string visual_pick_action_name_{"/pick_tag_recovery"};
-    double visual_pick_server_timeout_{1.0};
-    double visual_pick_result_timeout_{45.0};
-    rclcpp_action::Client<PickTag>::SharedPtr visual_pick_client_;
     std::string container_state_file_;
     std::unique_ptr<manip_task_execution::ContainerStateStore> container_state_store_;
     std::unique_ptr<manip_task_execution::ManipulatorExecutionLock> execution_lock_;
@@ -717,8 +722,8 @@ private:
     void configureArmInterface(const std::shared_ptr<MoveGroupInterface> & arm)
     {
         arm->setPoseReferenceFrame("base_footprint");
-        arm->setPlanningTime(15.0);
-        arm->setNumPlanningAttempts(20);
+        arm->setPlanningTime(arm_planning_time_sec_);
+        arm->setNumPlanningAttempts(arm_planning_attempts_);
         arm->setMaxVelocityScalingFactor(1.0);
         arm->setMaxAccelerationScalingFactor(1.0);
     }
@@ -1145,7 +1150,7 @@ private:
                     current_pitch,
                     current_yaw);
                 (void)current_yaw;
-                desired_q.setRPY(current_roll, current_pitch, yaw);
+                desired_q.setRPY(current_roll, 0.0, yaw);
             }
             desired_q.normalize();
             target_pose.orientation = tf2::toMsg(desired_q);
@@ -1266,7 +1271,9 @@ private:
         }
 
         try {
-            if (!task.plan(20)) {
+            const int solution_limit =
+                mtc_plan_solution_limit_ > 0 ? mtc_plan_solution_limit_ : 1;
+            if (!task.plan(solution_limit)) {
                 RCLCPP_ERROR_STREAM(
                     this->get_logger(),
                     "Task planning failed [" << task_name << "]");
@@ -1277,7 +1284,9 @@ private:
                 return false;
             }
 
-            task.introspection().publishSolution(*task.solutions().front());
+            if (publish_mtc_solution_ && !task.solutions().empty()) {
+                task.introspection().publishSolution(*task.solutions().front());
+            }
 
             const auto result = task.execute(*task.solutions().front());
             if (cancellationRequested()) {
@@ -1362,8 +1371,8 @@ private:
                 "manip_base_link",
                 tag_frame,
                 tag_tf,
-                std::chrono::milliseconds(5000),
-                std::chrono::milliseconds(200),
+                std::chrono::milliseconds(900),
+                std::chrono::milliseconds(100),
                 cycle_name + " camera_xy_alignment")) {
             speak("Nao consegui alinhar a camera porque nao encontrei a tag");
             return false;
@@ -1402,7 +1411,7 @@ private:
             return false;
         }
 
-        return sleepInterruptibly(std::chrono::milliseconds(1000));
+        return sleepInterruptibly(std::chrono::milliseconds(120));
     }
 
     bool runCameraAlignmentRetry(
@@ -1434,111 +1443,6 @@ private:
             failed_grasp_verification);
     }
 
-    bool runVisualPickFallback(
-        const std::shared_ptr<MoveGroupInterface> & arm,
-        const std::shared_ptr<MoveGroupInterface> & gripper,
-        const std::string & tag_frame,
-        const std::string & container_pose,
-        const std::shared_ptr<GoalHandlePickTag> & goal_handle)
-    {
-        if (!use_visual_pick_fallback_) {
-            return false;
-        }
-
-        if (!visual_pick_client_) {
-            visual_pick_client_ =
-                rclcpp_action::create_client<PickTag>(
-                    shared_from_this(),
-                    visual_pick_action_name_);
-        }
-
-        publish_stage(goal_handle, "visual_pick_fallback_waiting_server");
-        if (!visual_pick_client_->wait_for_action_server(
-                std::chrono::duration<double>(visual_pick_server_timeout_))) {
-            RCLCPP_WARN(
-                this->get_logger(),
-                "Visual pick fallback server %s is not available",
-                visual_pick_action_name_.c_str());
-            speak("O servidor de recuperacao visual nao esta disponivel");
-            return false;
-        }
-
-        if (cancellationRequested() || goal_handle->is_canceling()) {
-            return false;
-        }
-
-        publish_stage(goal_handle, "visual_pick_fallback");
-        speak("Vou tentar pegar usando a recuperacao visual");
-
-        PickTag::Goal recovery_goal;
-        recovery_goal.tag_frame = tag_frame;
-        auto goal_future = visual_pick_client_->async_send_goal(recovery_goal);
-
-        const auto goal_deadline =
-            std::chrono::steady_clock::now() + std::chrono::seconds(5);
-        while (goal_future.wait_for(std::chrono::milliseconds(50)) !=
-            std::future_status::ready) {
-            if (cancellationRequested() || goal_handle->is_canceling()) {
-                return false;
-            }
-            if (std::chrono::steady_clock::now() >= goal_deadline) {
-                RCLCPP_WARN(this->get_logger(), "Visual pick fallback goal timed out");
-                return false;
-            }
-        }
-
-        auto recovery_goal_handle = goal_future.get();
-        if (!recovery_goal_handle) {
-            RCLCPP_WARN(this->get_logger(), "Visual pick fallback goal was rejected");
-            return false;
-        }
-
-        auto result_future =
-            visual_pick_client_->async_get_result(recovery_goal_handle);
-        const auto result_deadline =
-            std::chrono::steady_clock::now() +
-            std::chrono::duration<double>(visual_pick_result_timeout_);
-        while (result_future.wait_for(std::chrono::milliseconds(100)) !=
-            std::future_status::ready) {
-            if (cancellationRequested() || goal_handle->is_canceling()) {
-                visual_pick_client_->async_cancel_goal(recovery_goal_handle);
-                return false;
-            }
-            if (std::chrono::steady_clock::now() >= result_deadline) {
-                RCLCPP_WARN(this->get_logger(), "Visual pick fallback result timed out");
-                visual_pick_client_->async_cancel_goal(recovery_goal_handle);
-                return false;
-            }
-        }
-
-        const auto wrapped_result = result_future.get();
-        if (wrapped_result.code != rclcpp_action::ResultCode::SUCCEEDED ||
-            !wrapped_result.result ||
-            !wrapped_result.result->success) {
-            const std::string recovery_message =
-                wrapped_result.result ?
-                wrapped_result.result->message :
-                std::string("<empty result>");
-            RCLCPP_WARN(
-                this->get_logger(),
-                "Visual pick fallback failed: %s",
-                recovery_message.c_str());
-            speak("A recuperacao visual tambem falhou");
-            return false;
-        }
-
-        RCLCPP_WARN(
-            this->get_logger(),
-            "Visual pick fallback grasped the block. Finishing normal pick flow.");
-        speak("A recuperacao visual pegou o bloco");
-        return transferGraspedObjectToContainer(
-            arm,
-            gripper,
-            container_pose,
-            "VISUAL_PICK_FALLBACK",
-            goal_handle);
-    }
-
     bool run_pick_cycle(
         const std::shared_ptr<MoveGroupInterface> & arm,
         const std::shared_ptr<MoveGroupInterface> & gripper,
@@ -1558,8 +1462,8 @@ private:
                 "base_footprint",
                 tag_frame,
                 tag_tf,
-                std::chrono::milliseconds(5000),
-                std::chrono::milliseconds(200),
+                std::chrono::milliseconds(900),
+                std::chrono::milliseconds(100),
                 cycle_name + " detect_tag")) {
             speak("Não encontrei a tag " + spokenTagName(tag_frame));
             return false;
@@ -1575,7 +1479,7 @@ private:
             return false;
         }
 
-        if (!sleepInterruptibly(std::chrono::milliseconds(1000))) {
+        if (!sleepInterruptibly(std::chrono::milliseconds(120))) {
             return false;
         }
 
@@ -1583,14 +1487,14 @@ private:
                 "base_footprint",
                 tag_frame,
                 tag_tf,
-                std::chrono::milliseconds(3000),
-                std::chrono::milliseconds(200),
+                std::chrono::milliseconds(700),
+                std::chrono::milliseconds(100),
                 cycle_name + " final_approach")) {
             return false;
         }
 
         arm->setMaxVelocityScalingFactor(1.0);
-        arm->setMaxAccelerationScalingFactor(0.2);
+        arm->setMaxAccelerationScalingFactor(0.8);
         
         publish_stage(goal_handle, "final_approach");
         //speak("Fazendo a aproximacao final da tag");
@@ -1611,7 +1515,7 @@ private:
         std::optional<GripperEffortSample> effort_before_close;
         if (verify_grasp_effort_) {
             effort_before_close = waitForFreshGripperEffort(
-                std::chrono::milliseconds(1000));
+                std::chrono::milliseconds(gripper_effort_wait_timeout_ms_));
             if (!effort_before_close) {
                 RCLCPP_ERROR(
                     this->get_logger(),
@@ -1741,7 +1645,7 @@ private:
                 "Approach task failed. Continuing pick cycle with fallback path.");
         }
 
-        if (!sleepInterruptibly(std::chrono::milliseconds(2000))) {
+        if (!sleepInterruptibly(std::chrono::milliseconds(pre_pick_cycle_wait_ms_))) {
             finish_failure("canceled before the pick cycle");
             return;
         }
@@ -1807,7 +1711,7 @@ private:
                 return;
             }
 
-            if (!sleepInterruptibly(std::chrono::milliseconds(500))) {
+            if (!sleepInterruptibly(std::chrono::milliseconds(grasp_retry_wait_ms_))) {
                 finish_failure("canceled before grasp retry");
                 return;
             }

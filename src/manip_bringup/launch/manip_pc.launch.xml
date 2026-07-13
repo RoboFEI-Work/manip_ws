@@ -9,7 +9,6 @@
     <arg name="launch_realsense" default="true"/>
     <arg name="launch_apriltag" default="true"/>
     <arg name="launch_pick_action" default="true"/>
-    <arg name="launch_pick_recovery" default="false"/>
     <arg name="launch_place_action" default="true"/>
     <arg name="launch_speech" default="true"/>
     <arg name="piper_executable" default="auto"/>
@@ -37,14 +36,6 @@
     <arg name="fallback_ik_mode" default="local"/>
     <arg name="fallback_ik_solve_type" default="Distance"/>
     <arg name="fallback_ik_position_only" default="true"/>
-    <arg name="visual_pick_action_name" default="/pick_tag_recovery"/>
-    <arg name="pick_recovery_devicename" default="/dev/ttyUSB0"/>
-    <arg name="pick_recovery_baudrate" default="1000000"/>
-    <arg name="pick_recovery_image_topic" default="/camera/camera/color/image_raw"/>
-    <arg name="pick_recovery_apriltag_detections_topic" default="/detections"/>
-    <arg name="pick_recovery_arm_controller_action" default="/arm_controller/follow_joint_trajectory"/>
-    <arg name="pick_recovery_gripper_controller_action" default="/gripper_controller/follow_joint_trajectory"/>
-    <arg name="pick_recovery_joint_state_topic" default="/joint_states"/>
     <arg name="reset_container_states" default="true"/>
     <arg name="apriltag_params_file" default="$(env HOME)/manip_ws/src/apriltag_ros/cfg/tags_36h11.yaml"/>
 
@@ -67,7 +58,7 @@
         <include file="$(find-pkg-share realsense2_camera)/launch/rs_launch.py">
             <arg name="camera_name" value="camera"/>
             <arg name="align_depth.enable" value="true"/>
-            <arg name="pointcloud.enable" value="true"/>
+            <arg name="pointcloud.enable" value="false"/>
             <arg name="enable_color" value="true"/>
             <arg name="enable_depth" value="true"/>
         </include>
@@ -77,6 +68,7 @@
         <node pkg="apriltag_ros" exec="apriltag_node" output="screen">
             <remap from="image_rect" to="/camera/camera/color/image_raw"/>
             <remap from="camera_info" to="/camera/camera/color/camera_info"/>
+            <param name="qos_profile" value="sensor_data"/>
             <param from="$(var apriltag_params_file)"/>
         </node>
     </group>
@@ -95,22 +87,6 @@
 
     <group if="$(var launch_pick_telemetry)">
         <node pkg="manip_task_execution" exec="pick_telemetry_plotter" output="screen"/>
-    </group>
-
-    <group if="$(var launch_pick_recovery)">
-        <node pkg="manip_task_execution" exec="pick_recovery_action_node.py" output="screen">
-            <param name="devicename" value="$(var pick_recovery_devicename)"/>
-            <param name="baudrate" value="$(var pick_recovery_baudrate)"/>
-            <param name="use_ros2_control" value="true"/>
-            <param name="arm_controller_action" value="$(var pick_recovery_arm_controller_action)"/>
-            <param name="gripper_controller_action" value="$(var pick_recovery_gripper_controller_action)"/>
-            <param name="joint_state_topic" value="$(var pick_recovery_joint_state_topic)"/>
-            <param name="image_topic" value="$(var pick_recovery_image_topic)"/>
-            <param name="apriltag_detections_topic" value="$(var pick_recovery_apriltag_detections_topic)"/>
-            <param name="max_detection_age_sec" value="0.5"/>
-            <param name="use_ros_image" value="true"/>
-            <param name="show_debug_window" value="false"/>
-        </node>
     </group>
 
     <group if="$(var launch_pick_action)">
@@ -135,9 +111,7 @@
             <param name="fallback_ik_solve_type" value="$(var fallback_ik_solve_type)"/>
             <param name="fallback_ik_position_only" value="$(var fallback_ik_position_only)"/>
             <param name="skip_failed_pick_after_retries" value="$(var skip_failed_pick_after_retries)"/>
-            <param name="use_visual_pick_fallback" value="$(var launch_pick_recovery)"/>
             <param name="use_camera_alignment_retry" value="$(var use_camera_alignment_retry)"/>
-            <param name="visual_pick_action_name" value="$(var visual_pick_action_name)"/>
         </node>
     </group>
 

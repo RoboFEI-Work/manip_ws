@@ -1,7 +1,7 @@
 actions:
   - kind: goto
     ws: WS_1
-    mesa: Mesa0
+    mesa: Mesa10
   - kind: pick
     tag_frame: tag_1
     ws: WS_1
@@ -19,15 +19,14 @@ actions:
   - kind: place
     tag_frame: tag_1
     ws: WS_8
-    table_pose: tag_5
+    table_pose: Mesa0
   - kind: place
     tag_frame: tag_2
     ws: WS_8
-    table_pose: tag_1
+    table_pose: Mesa0.1
   - kind: place
     tag_frame: tag_3
     ws: WS_8
-    table_pose: tag_2
+    table_pose: Mesa0.2
   - kind: home
     pose_name: home
-  

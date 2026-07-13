@@ -64,9 +64,25 @@ public:
             "container_state_file",
             default_container_state_file);
         container_place_z_offset_ =
-            this->declare_parameter<double>("container_place_z_offset", 0.1);
+            this->declare_parameter<double>("container_place_z_offset", 0.1);  
         skip_missing_place_tag_ =
             this->declare_parameter<bool>("skip_missing_place_tag", true);
+        arm_planning_time_sec_ =
+            this->declare_parameter<double>("arm_planning_time_sec", 4.0);
+        arm_planning_attempts_ =
+            this->declare_parameter<int>("arm_planning_attempts", 4);
+        place_detect_timeout_ms_ =
+            this->declare_parameter<int>("place_detect_timeout_ms", 1200);
+        place_final_detect_timeout_ms_ =
+            this->declare_parameter<int>("place_final_detect_timeout_ms", 700);
+        place_tf_retry_ms_ =
+            this->declare_parameter<int>("place_tf_retry_ms", 100);
+        place_settle_wait_ms_ =
+            this->declare_parameter<int>("place_settle_wait_ms", 120);
+        place_goal_position_tolerance_ =
+            this->declare_parameter<double>("place_goal_position_tolerance", 0.001);
+        place_goal_orientation_tolerance_ =
+            this->declare_parameter<double>("place_goal_orientation_tolerance", 0.10);
         container_state_store_ =
             std::make_unique<manip_task_execution::ContainerStateStore>(container_state_file_);
         declarePlanningDefaults();
@@ -120,6 +136,14 @@ private:
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr speech_publisher_;
     double container_place_z_offset_;
+    double arm_planning_time_sec_{4.0};
+    int arm_planning_attempts_{4};
+    int place_detect_timeout_ms_{1200};
+    int place_final_detect_timeout_ms_{700};
+    int place_tf_retry_ms_{100};
+    int place_settle_wait_ms_{120};
+    double place_goal_position_tolerance_{0.001};
+    double place_goal_orientation_tolerance_{0.10};
     std::unique_ptr<manip_task_execution::ManipulatorExecutionLock> execution_lock_;
     bool speech_enabled_{true};
     bool skip_missing_place_tag_{true};
@@ -286,12 +310,12 @@ private:
         if (!this->has_parameter("robot_description_kinematics.arm.position_threshold")) {
             this->declare_parameter<double>(
                 "robot_description_kinematics.arm.position_threshold",
-                0.002);
+                0.001);
         }
         if (!this->has_parameter("robot_description_kinematics.arm.orientation_threshold")) {
             this->declare_parameter<double>(
                 "robot_description_kinematics.arm.orientation_threshold",
-                0.30);
+                0.08);
         }
         if (!this->has_parameter("robot_description_kinematics.arm.cost_threshold")) {
             this->declare_parameter<double>(
@@ -325,7 +349,7 @@ private:
             this->declare_parameter<double>("arm.rotation_scale", 0.03);
         }
         if (!this->has_parameter("arm.position_threshold")) {
-            this->declare_parameter<double>("arm.position_threshold", 0.002);
+            this->declare_parameter<double>("arm.position_threshold", 0.001);
         }
         if (!this->has_parameter("arm.orientation_threshold")) {
             this->declare_parameter<double>("arm.orientation_threshold", 0.30);
@@ -514,10 +538,6 @@ private:
             tf.transform.rotation.z,
             tf.transform.rotation.w);
 
-        double roll = 0.0;
-        double pitch = 0.0;
-        double yaw = 0.0;
-        tf2::Matrix3x3(tag_q).getRPY(roll, pitch, yaw);
 
         geometry_msgs::msg::Pose target_pose;
         target_pose.position.x = tf.transform.translation.x;
@@ -526,7 +546,7 @@ private:
 
         if (use_orientation_constraint) {
             tf2::Quaternion desired_q;
-            desired_q.setRPY(0.0, M_PI, yaw);
+            desired_q.setRPY(0.0, M_PI, 1.57);
             desired_q.normalize();
             target_pose.orientation = tf2::toMsg(desired_q);
         } else {
@@ -535,8 +555,9 @@ private:
 
         MoveGroupInterface::Plan plan;
 
-        arm->setGoalPositionTolerance(0.0005);
-        arm->setGoalOrientationTolerance(use_orientation_constraint ? 0.05 : M_PI);
+        arm->setGoalPositionTolerance(place_goal_position_tolerance_);
+        arm->setGoalOrientationTolerance(
+            use_orientation_constraint ? place_goal_orientation_tolerance_ : M_PI);
         arm->clearPoseTargets();
         arm->setPoseTarget(target_pose, eef_link);
 
@@ -592,13 +613,15 @@ private:
         publish_stage(goal_handle, "detecting_place_tag");
         speak("Procurando o alvo de entrega " + spokenTargetName(table_pose));
 
+        const std::string place_reference_frame = "base_footprint";
+
         geometry_msgs::msg::TransformStamped target_tf;
         if (!waitForTagTransform(
                 "manip_base_link",
                 table_pose,
                 target_tf,
-                std::chrono::milliseconds(5000),
-                std::chrono::milliseconds(200),
+            std::chrono::milliseconds(place_detect_timeout_ms_),
+            std::chrono::milliseconds(place_tf_retry_ms_),
                 "place detect " + table_pose)) {
             speak("Nao encontrei o alvo de entrega " + spokenTargetName(table_pose));
             return false;
@@ -609,6 +632,15 @@ private:
 
         constexpr double kTagXNearZero = 0.1;
         const double tag_x = target_tf.transform.translation.x;
+
+        RCLCPP_INFO(
+            get_logger(),
+            "[PLACE] initial TF %s <- %s: x=%.4f y=%.4f z=%.4f",
+            place_reference_frame.c_str(),
+            table_pose.c_str(),
+            target_tf.transform.translation.x,
+            target_tf.transform.translation.y,
+            target_tf.transform.translation.z);
 
         if (std::abs(tag_x) > kTagXNearZero) {
             //speak("Corrigindo a aproximacao lateral para a entrega");
@@ -628,20 +660,29 @@ private:
             }
         }
 
-        if (!sleepInterruptibly(std::chrono::milliseconds(1000))) {
+        if (!sleepInterruptibly(std::chrono::milliseconds(place_settle_wait_ms_))) {
             return false;
         }
 
         if (!waitForTagTransform(
-                "base_footprint",
+                place_reference_frame,
                 table_pose,
                 target_tf,
-                std::chrono::milliseconds(3000),
-                std::chrono::milliseconds(200),
+            std::chrono::milliseconds(place_final_detect_timeout_ms_),
+            std::chrono::milliseconds(place_tf_retry_ms_),
                 "place final " + table_pose)) {
             speak("Perdi o alvo de entrega antes da aproximacao final");
             return false;
         }
+
+        RCLCPP_INFO(
+            get_logger(),
+            "[PLACE] final TF %s <- %s: x=%.4f y=%.4f z=%.4f",
+            place_reference_frame.c_str(),
+            table_pose.c_str(),
+            target_tf.transform.translation.x,
+            target_tf.transform.translation.y,
+            target_tf.transform.translation.z);
 
         target_tf.transform.translation.z += container_place_z_offset_;
 
@@ -767,8 +808,8 @@ private:
         speak("Objeto localizado no " + spokenTargetName(container_pose));
 
         arm->setPoseReferenceFrame("base_footprint");
-        arm->setPlanningTime(15.0);
-        arm->setNumPlanningAttempts(20);
+        arm->setPlanningTime(arm_planning_time_sec_);
+        arm->setNumPlanningAttempts(arm_planning_attempts_);
         arm->setMaxVelocityScalingFactor(1.0);
         arm->setMaxAccelerationScalingFactor(1.0);
         gripper->setMaxVelocityScalingFactor(1.0);
@@ -883,7 +924,7 @@ private:
         }
 
 
-        arm->setMaxAccelerationScalingFactor(0.2);
+        arm->setMaxAccelerationScalingFactor(1.0);
         
         publish_stage(goal_handle, "going_table");
         //speak("Levando o bloco para o destino");

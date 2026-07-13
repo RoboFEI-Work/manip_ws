@@ -48,7 +48,7 @@
                   <include file="$(find-pkg-share realsense2_camera)/launch/rs_launch.py">
                         <arg name="camera_name" value="camera"/>
                         <arg name="align_depth.enable" value="true"/>
-                        <arg name="pointcloud.enable" value="true"/>
+                        <arg name="pointcloud.enable" value="false"/>
                         <arg name="enable_color" value="true"/>
                         <arg name="enable_depth" value="true"/>
                   </include>
@@ -58,6 +58,7 @@
                   <node pkg="apriltag_ros" exec="apriltag_node" output="screen">
                         <remap from="image_rect" to="/camera/camera/color/image_raw"/>
                         <remap from="camera_info" to="/camera/camera/color/camera_info"/>
+                        <param name="qos_profile" value="sensor_data"/>
                         <param from="$(var apriltag_params_file)"/>
                   </node>
             </group>
