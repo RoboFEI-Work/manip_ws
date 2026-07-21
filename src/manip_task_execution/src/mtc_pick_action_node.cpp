@@ -433,20 +433,6 @@ public:
             this->declare_parameter<bool>("skip_failed_pick_after_retries", true);
         use_camera_alignment_retry_ =
             this->declare_parameter<bool>("use_camera_alignment_retry", true);
-        arm_planning_time_sec_ =
-            this->declare_parameter<double>("arm_planning_time_sec", 4.0);
-        arm_planning_attempts_ =
-            this->declare_parameter<int>("arm_planning_attempts", 4);
-        mtc_plan_solution_limit_ =
-            this->declare_parameter<int>("mtc_plan_solution_limit", 3);
-        publish_mtc_solution_ =
-            this->declare_parameter<bool>("publish_mtc_solution", false);
-        gripper_effort_wait_timeout_ms_ =
-            this->declare_parameter<int>("gripper_effort_wait_timeout_ms", 400);
-        pre_pick_cycle_wait_ms_ =
-            this->declare_parameter<int>("pre_pick_cycle_wait_ms", 120);
-        grasp_retry_wait_ms_ =
-            this->declare_parameter<int>("grasp_retry_wait_ms", 80);
 
         effort_subscription_ =
             this->create_subscription<control_msgs::msg::DynamicJointState>(
@@ -558,13 +544,6 @@ private:
         0.5};
     bool use_camera_alignment_retry_{true};
     bool skip_failed_pick_after_retries_{true};
-    double arm_planning_time_sec_{4.0};
-    int arm_planning_attempts_{4};
-    int mtc_plan_solution_limit_{3};
-    bool publish_mtc_solution_{false};
-    int gripper_effort_wait_timeout_ms_{400};
-    int pre_pick_cycle_wait_ms_{120};
-    int grasp_retry_wait_ms_{80};
     double active_goal_position_tolerance_{0.003};
     double active_goal_orientation_tolerance_{0.20};
     std::string container_state_file_;
@@ -722,8 +701,8 @@ private:
     void configureArmInterface(const std::shared_ptr<MoveGroupInterface> & arm)
     {
         arm->setPoseReferenceFrame("base_footprint");
-        arm->setPlanningTime(arm_planning_time_sec_);
-        arm->setNumPlanningAttempts(arm_planning_attempts_);
+        arm->setPlanningTime(15.0);
+        arm->setNumPlanningAttempts(20);
         arm->setMaxVelocityScalingFactor(1.0);
         arm->setMaxAccelerationScalingFactor(1.0);
     }
@@ -1271,9 +1250,7 @@ private:
         }
 
         try {
-            const int solution_limit =
-                mtc_plan_solution_limit_ > 0 ? mtc_plan_solution_limit_ : 1;
-            if (!task.plan(solution_limit)) {
+            if (!task.plan(6)) {
                 RCLCPP_ERROR_STREAM(
                     this->get_logger(),
                     "Task planning failed [" << task_name << "]");
@@ -1284,9 +1261,7 @@ private:
                 return false;
             }
 
-            if (publish_mtc_solution_ && !task.solutions().empty()) {
-                task.introspection().publishSolution(*task.solutions().front());
-            }
+            task.introspection().publishSolution(*task.solutions().front());
 
             const auto result = task.execute(*task.solutions().front());
             if (cancellationRequested()) {
@@ -1515,7 +1490,7 @@ private:
         std::optional<GripperEffortSample> effort_before_close;
         if (verify_grasp_effort_) {
             effort_before_close = waitForFreshGripperEffort(
-                std::chrono::milliseconds(gripper_effort_wait_timeout_ms_));
+                std::chrono::milliseconds(600));
             if (!effort_before_close) {
                 RCLCPP_ERROR(
                     this->get_logger(),
@@ -1645,7 +1620,7 @@ private:
                 "Approach task failed. Continuing pick cycle with fallback path.");
         }
 
-        if (!sleepInterruptibly(std::chrono::milliseconds(pre_pick_cycle_wait_ms_))) {
+        if (!sleepInterruptibly(std::chrono::milliseconds(200))) {
             finish_failure("canceled before the pick cycle");
             return;
         }
@@ -1711,7 +1686,7 @@ private:
                 return;
             }
 
-            if (!sleepInterruptibly(std::chrono::milliseconds(grasp_retry_wait_ms_))) {
+            if (!sleepInterruptibly(std::chrono::milliseconds(100))) {
                 finish_failure("canceled before grasp retry");
                 return;
             }

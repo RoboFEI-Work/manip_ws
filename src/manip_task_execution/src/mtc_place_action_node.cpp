@@ -67,22 +67,6 @@ public:
             this->declare_parameter<double>("container_place_z_offset", 0.1);  
         skip_missing_place_tag_ =
             this->declare_parameter<bool>("skip_missing_place_tag", true);
-        arm_planning_time_sec_ =
-            this->declare_parameter<double>("arm_planning_time_sec", 4.0);
-        arm_planning_attempts_ =
-            this->declare_parameter<int>("arm_planning_attempts", 4);
-        place_detect_timeout_ms_ =
-            this->declare_parameter<int>("place_detect_timeout_ms", 1200);
-        place_final_detect_timeout_ms_ =
-            this->declare_parameter<int>("place_final_detect_timeout_ms", 700);
-        place_tf_retry_ms_ =
-            this->declare_parameter<int>("place_tf_retry_ms", 100);
-        place_settle_wait_ms_ =
-            this->declare_parameter<int>("place_settle_wait_ms", 120);
-        place_goal_position_tolerance_ =
-            this->declare_parameter<double>("place_goal_position_tolerance", 0.001);
-        place_goal_orientation_tolerance_ =
-            this->declare_parameter<double>("place_goal_orientation_tolerance", 0.10);
         container_state_store_ =
             std::make_unique<manip_task_execution::ContainerStateStore>(container_state_file_);
         declarePlanningDefaults();
@@ -136,14 +120,6 @@ private:
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr speech_publisher_;
     double container_place_z_offset_;
-    double arm_planning_time_sec_{4.0};
-    int arm_planning_attempts_{4};
-    int place_detect_timeout_ms_{1200};
-    int place_final_detect_timeout_ms_{700};
-    int place_tf_retry_ms_{100};
-    int place_settle_wait_ms_{120};
-    double place_goal_position_tolerance_{0.001};
-    double place_goal_orientation_tolerance_{0.10};
     std::unique_ptr<manip_task_execution::ManipulatorExecutionLock> execution_lock_;
     bool speech_enabled_{true};
     bool skip_missing_place_tag_{true};
@@ -555,9 +531,8 @@ private:
 
         MoveGroupInterface::Plan plan;
 
-        arm->setGoalPositionTolerance(place_goal_position_tolerance_);
-        arm->setGoalOrientationTolerance(
-            use_orientation_constraint ? place_goal_orientation_tolerance_ : M_PI);
+        arm->setGoalPositionTolerance(0.0003);
+        arm->setGoalOrientationTolerance(use_orientation_constraint ? 0.05 : M_PI);
         arm->clearPoseTargets();
         arm->setPoseTarget(target_pose, eef_link);
 
@@ -620,8 +595,8 @@ private:
                 "manip_base_link",
                 table_pose,
                 target_tf,
-            std::chrono::milliseconds(place_detect_timeout_ms_),
-            std::chrono::milliseconds(place_tf_retry_ms_),
+                std::chrono::milliseconds(5000),
+                std::chrono::milliseconds(200),
                 "place detect " + table_pose)) {
             speak("Nao encontrei o alvo de entrega " + spokenTargetName(table_pose));
             return false;
@@ -660,7 +635,7 @@ private:
             }
         }
 
-        if (!sleepInterruptibly(std::chrono::milliseconds(place_settle_wait_ms_))) {
+        if (!sleepInterruptibly(std::chrono::milliseconds(1000))) {
             return false;
         }
 
@@ -668,8 +643,8 @@ private:
                 place_reference_frame,
                 table_pose,
                 target_tf,
-            std::chrono::milliseconds(place_final_detect_timeout_ms_),
-            std::chrono::milliseconds(place_tf_retry_ms_),
+                std::chrono::milliseconds(3000),
+                std::chrono::milliseconds(200),
                 "place final " + table_pose)) {
             speak("Perdi o alvo de entrega antes da aproximacao final");
             return false;
@@ -808,8 +783,8 @@ private:
         speak("Objeto localizado no " + spokenTargetName(container_pose));
 
         arm->setPoseReferenceFrame("base_footprint");
-        arm->setPlanningTime(arm_planning_time_sec_);
-        arm->setNumPlanningAttempts(arm_planning_attempts_);
+        arm->setPlanningTime(15.0);
+        arm->setNumPlanningAttempts(20);
         arm->setMaxVelocityScalingFactor(1.0);
         arm->setMaxAccelerationScalingFactor(1.0);
         gripper->setMaxVelocityScalingFactor(1.0);

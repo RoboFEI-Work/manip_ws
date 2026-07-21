@@ -140,23 +140,6 @@ ros2 topic pub --once /manip/speech std_msgs/msg/String \
   "{data: 'Teste da sintese de voz do manipulador'}"
 ```
 
-O nó usa um ritmo e uma entonação ajustados para reduzir a fala picotada. Os
-valores podem ser afinados sem alterar o código:
-
-```bash
-ros2 run manip_audio speech_node --ros-args \
-  -p rate:=165 -p pitch:=45 -p word_gap:=0
-```
-
-Os dois computadores precisam estar no mesmo dominio ROS 2:
-
-```bash
-echo $ROS_DOMAIN_ID
-export ROS_DOMAIN_ID=0
-```
-
-Use o mesmo valor nos dois lados.
-
 ### 4) Teste apenas no PC
 
 Para testar sem Raspberry e sem motores reais, use o launch de mock:
@@ -345,7 +328,7 @@ source install/setup.bash
 ros2 run manip_bt manip_bt_executor
 ```
 
-Observacao: atualmente o executor usa caminho fixo para a arvore `behavior_tree_manip/test2.xml` dentro do share do pacote `manip_bt`.
+Observacao: atualmente o executor usa caminho fixo para a arvore `behavior_tree_manip/test3.xml` dentro do share do pacote `manip_bt`.
 
 ### Rodar BT a partir de YAML de acoes
 
@@ -367,7 +350,51 @@ source install/setup.bash
 ros2 run manip_bt bt_yaml_executor att1.yaml
 ```
 
-Se nenhum arquivo for passado, o executor tenta usar `att1.yaml`. O caminho pode ser absoluto, relativo ao workspace, ou um arquivo dentro de `src/manip_bt/behavior_tree_manip/` instalado no share do pacote.
+Se nenhum arquivo for passado, o executor tenta usar `bmtt.yaml`. O caminho pode ser absoluto, relativo ao workspace, ou um arquivo dentro de `src/manip_bt/behavior_tree_manip/` instalado no share do pacote.
+
+## Performance da task (sem mexer na deteccao)
+
+As optimizacoes mais recentes estao nos action servers de pick/place.
+Os parametros abaixo podem ser ajustados em runtime via launch para reduzir latencia entre etapas.
+
+Parametros de performance do `mtc_pick_action_node`:
+
+- `arm_planning_time_sec` (default: `4.0`)
+- `arm_planning_attempts` (default: `4`)
+- `mtc_plan_solution_limit` (default: `3`)
+- `publish_mtc_solution` (default: `false`)
+- `gripper_effort_wait_timeout_ms` (default: `400`)
+- `pre_pick_cycle_wait_ms` (default: `120`)
+- `grasp_retry_wait_ms` (default: `80`)
+
+Parametros de performance do `mtc_place_action_node`:
+
+- `arm_planning_time_sec` (default: `4.0`)
+- `arm_planning_attempts` (default: `4`)
+- `place_detect_timeout_ms` (default: `1200`)
+- `place_final_detect_timeout_ms` (default: `700`)
+- `place_tf_retry_ms` (default: `100`)
+- `place_settle_wait_ms` (default: `120`)
+- `place_goal_position_tolerance` (default: `0.001`)
+- `place_goal_orientation_tolerance` (default: `0.10`)
+
+Exemplo de launch com perfil mais rapido:
+
+```bash
+ros2 launch manip_bringup manip_pc.launch.xml \
+	launch_pick_action:=true launch_place_action:=true \
+	verify_grasp_effort:=false \
+	arm_planning_time_sec:=2.5 arm_planning_attempts:=2 \
+	mtc_plan_solution_limit:=2 publish_mtc_solution:=false \
+	gripper_effort_wait_timeout_ms:=250 pre_pick_cycle_wait_ms:=80 grasp_retry_wait_ms:=50 \
+	place_detect_timeout_ms:=900 place_final_detect_timeout_ms:=500 place_tf_retry_ms:=80 place_settle_wait_ms:=80
+```
+
+Observacao sobre atraso entre places consecutivos:
+
+- Depois de cada `place`, o servidor ainda finaliza etapas de fechamento do goal (incluindo atualizacao do `container_states.yaml`).
+- O cliente BT de `PlaceTag` tambem chama `wait_for_action_server` ao iniciar cada novo goal.
+- Por isso pode existir um pequeno gap entre `place` de uma tag e o inicio do `place` seguinte, mesmo sem `goto`.
 
 Schema esperado do YAML:
 

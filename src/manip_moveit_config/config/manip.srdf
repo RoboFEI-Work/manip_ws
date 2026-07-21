@@ -135,7 +135,7 @@
         <joint name="manip_joint5" value="-1.5708"/>
     </group_state>
     <group_state name="Mesa0.2" group="arm">
-        <joint name="manip_joint1" value="1.8850"/>
+        <joint name="manip_joint1" value="2.0944"/>
         <joint name="manip_joint2" value="0.9599"/>
         <joint name="manip_joint3" value="1.0297"/>
         <joint name="manip_joint4" value="0.9948"/>
@@ -203,6 +203,13 @@
         <joint name="manip_joint3" value="0.7854"/>
         <joint name="manip_joint4" value="1.6406"/>
         <joint name="manip_joint5" value="-1.5708"/>
+    </group_state>
+    <group_state name="MesaSh" group="arm">
+        <joint name="manip_joint1" value="1.44862"/>
+        <joint name="manip_joint2" value="0.890118"/>
+        <joint name="manip_joint3" value="-0.436332"/>
+        <joint name="manip_joint4" value="1.93732"/>
+        <joint name="manip_joint5" value="-1.44862"/>
     </group_state>
     <group_state name="gripper_close" group="gripper">
         <joint name="manip_joint6" value="0.170"/>
